@@ -1,0 +1,511 @@
+{
+  "description": "5 fixed ten-episode sequences for the two-agent protocol. Each repNNN_sampled_manifest.json is a list of 10 pairs of task ids and nothing else. The tasks live in the pool manifests under task/, and the runner resolves those ids at load time. Pass this directory as --task-sequence-record. These are rep001-rep005 of task/task_sequences_50x10, copied unchanged.",
+  "reps": 5,
+  "pairs_per_run": 10,
+  "tasks_per_run": 20,
+  "task_types": [
+    "code_analysis",
+    "data_search",
+    "record_extraction"
+  ],
+  "invariants": [
+    "no task appears twice in a run",
+    "no code clean/buggy twin pair appears in a run (one task per spec_key)",
+    "every pair passes validate_task_pair",
+    "all three task types appear in every run",
+    "every task id of a run resolves in the pool manifests under task/"
+  ],
+  "runs": [
+    {
+      "rep": 1,
+      "reusable_manifest": "task/task_sequences_5x10/rep001_sampled_manifest.json",
+      "generation_seed": "task-sequence:001",
+      "task_count": 20,
+      "pair_count": 10,
+      "pairs_by_task_type": {
+        "code_analysis": 3,
+        "data_search": 5,
+        "record_extraction": 2
+      },
+      "code_expected_verdicts": {
+        "pass": 3,
+        "fail": 3
+      },
+      "pairs": [
+        {
+          "episode": 1,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_15_procurement_finance_review",
+            "data_36_clinical_safety_followups"
+          ]
+        },
+        {
+          "episode": 2,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_39_topn",
+            "ca_16_window"
+          ]
+        },
+        {
+          "episode": 3,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_46_online_course_progress",
+            "text_17_audit_remediation"
+          ]
+        },
+        {
+          "episode": 4,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_19_procurement_finance_review",
+            "data_25_procurement_finance_review"
+          ]
+        },
+        {
+          "episode": 5,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_18_password",
+            "ca_10_dedupe"
+          ]
+        },
+        {
+          "episode": 6,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_42_campus_ticket_risks",
+            "data_09_support_case_escalations"
+          ]
+        },
+        {
+          "episode": 7,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_34_cart_total",
+            "ca_07_compact"
+          ]
+        },
+        {
+          "episode": 8,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_22_procurement_finance_review",
+            "data_37_clinical_safety_followups"
+          ]
+        },
+        {
+          "episode": 9,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_24_procurement_finance_review",
+            "data_38_clinical_safety_followups"
+          ]
+        },
+        {
+          "episode": 10,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_16_contract_termination",
+            "text_39_inspection_repairs"
+          ]
+        }
+      ]
+    },
+    {
+      "rep": 2,
+      "reusable_manifest": "task/task_sequences_5x10/rep002_sampled_manifest.json",
+      "generation_seed": "task-sequence:002",
+      "task_count": 20,
+      "pair_count": 10,
+      "pairs_by_task_type": {
+        "code_analysis": 2,
+        "data_search": 3,
+        "record_extraction": 5
+      },
+      "code_expected_verdicts": {
+        "pass": 2,
+        "fail": 2
+      },
+      "pairs": [
+        {
+          "episode": 1,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_49_phone",
+            "ca_30_email_mask"
+          ]
+        },
+        {
+          "episode": 2,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_07_support_case_escalations",
+            "data_10_support_case_escalations"
+          ]
+        },
+        {
+          "episode": 3,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_50_podcast_sponsor_terms",
+            "text_11_instrument_calibration"
+          ]
+        },
+        {
+          "episode": 4,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_31_clinical_safety_followups",
+            "data_36_clinical_safety_followups"
+          ]
+        },
+        {
+          "episode": 5,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_01_roommate_expenses",
+            "text_08_algebra_constraints"
+          ]
+        },
+        {
+          "episode": 6,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_15_intersection",
+            "ca_05_pagination"
+          ]
+        },
+        {
+          "episode": 7,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_30_grant_eligibility",
+            "text_35_astronomy_anomalies"
+          ]
+        },
+        {
+          "episode": 8,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_20_hotel_requests",
+            "text_29_civic_votes"
+          ]
+        },
+        {
+          "episode": 9,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_13_support_case_escalations",
+            "data_39_campus_ticket_risks"
+          ]
+        },
+        {
+          "episode": 10,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_22_manuscript_revisions",
+            "text_02_family_medical_pickups"
+          ]
+        }
+      ]
+    },
+    {
+      "rep": 3,
+      "reusable_manifest": "task/task_sequences_5x10/rep003_sampled_manifest.json",
+      "generation_seed": "task-sequence:003",
+      "task_count": 20,
+      "pair_count": 10,
+      "pairs_by_task_type": {
+        "code_analysis": 5,
+        "data_search": 2,
+        "record_extraction": 3
+      },
+      "code_expected_verdicts": {
+        "pass": 5,
+        "fail": 5
+      },
+      "pairs": [
+        {
+          "episode": 1,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_50_password",
+            "ca_26_temperature"
+          ]
+        },
+        {
+          "episode": 2,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_10_lab_anomalies",
+            "text_02_family_medical_pickups"
+          ]
+        },
+        {
+          "episode": 3,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_08_phone",
+            "ca_32_grade"
+          ]
+        },
+        {
+          "episode": 4,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_13_match_turning_points",
+            "text_15_lab_results_recheck"
+          ]
+        },
+        {
+          "episode": 5,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_08_support_case_escalations",
+            "data_47_campus_ticket_risks"
+          ]
+        },
+        {
+          "episode": 6,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_06_earnings_margin_risks",
+            "text_20_hotel_requests"
+          ]
+        },
+        {
+          "episode": 7,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_20_acronym",
+            "ca_40_inventory"
+          ]
+        },
+        {
+          "episode": 8,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_19_procurement_finance_review",
+            "data_16_procurement_finance_review"
+          ]
+        },
+        {
+          "episode": 9,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_05_pagination",
+            "ca_34_cart_total"
+          ]
+        },
+        {
+          "episode": 10,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_42_buckets",
+            "ca_33_normalize"
+          ]
+        }
+      ]
+    },
+    {
+      "rep": 4,
+      "reusable_manifest": "task/task_sequences_5x10/rep004_sampled_manifest.json",
+      "generation_seed": "task-sequence:004",
+      "task_count": 20,
+      "pair_count": 10,
+      "pairs_by_task_type": {
+        "code_analysis": 4,
+        "data_search": 5,
+        "record_extraction": 1
+      },
+      "code_expected_verdicts": {
+        "pass": 2,
+        "fail": 6
+      },
+      "pairs": [
+        {
+          "episode": 1,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_19_cart_total",
+            "ca_50_password"
+          ]
+        },
+        {
+          "episode": 2,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_36_restaurant_shifts",
+            "text_26_bug_triage_p0"
+          ]
+        },
+        {
+          "episode": 3,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_24_procurement_finance_review",
+            "data_49_campus_ticket_risks"
+          ]
+        },
+        {
+          "episode": 4,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_01_time",
+            "ca_17_csv"
+          ]
+        },
+        {
+          "episode": 5,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_12_support_case_escalations",
+            "data_36_clinical_safety_followups"
+          ]
+        },
+        {
+          "episode": 6,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_37_clinical_safety_followups",
+            "data_18_procurement_finance_review"
+          ]
+        },
+        {
+          "episode": 7,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_03_roman",
+            "ca_14_initials"
+          ]
+        },
+        {
+          "episode": 8,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_43_campus_ticket_risks",
+            "data_39_campus_ticket_risks"
+          ]
+        },
+        {
+          "episode": 9,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_09_compact",
+            "ca_11_date"
+          ]
+        },
+        {
+          "episode": 10,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_10_support_case_escalations",
+            "data_29_clinical_safety_followups"
+          ]
+        }
+      ]
+    },
+    {
+      "rep": 5,
+      "reusable_manifest": "task/task_sequences_5x10/rep005_sampled_manifest.json",
+      "generation_seed": "task-sequence:005",
+      "task_count": 20,
+      "pair_count": 10,
+      "pairs_by_task_type": {
+        "code_analysis": 6,
+        "data_search": 2,
+        "record_extraction": 2
+      },
+      "code_expected_verdicts": {
+        "pass": 7,
+        "fail": 5
+      },
+      "pairs": [
+        {
+          "episode": 1,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_44_inventory",
+            "ca_10_dedupe"
+          ]
+        },
+        {
+          "episode": 2,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_37_clinical_safety_followups",
+            "data_29_clinical_safety_followups"
+          ]
+        },
+        {
+          "episode": 3,
+          "task_type": "data_search",
+          "task_ids": [
+            "data_49_campus_ticket_risks",
+            "data_45_campus_ticket_risks"
+          ]
+        },
+        {
+          "episode": 4,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_09_compact",
+            "ca_27_initials"
+          ]
+        },
+        {
+          "episode": 5,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_24_slugify",
+            "ca_13_intersection"
+          ]
+        },
+        {
+          "episode": 6,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_49_real_estate_showings",
+            "text_36_restaurant_shifts"
+          ]
+        },
+        {
+          "episode": 7,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_12_grade",
+            "ca_05_pagination"
+          ]
+        },
+        {
+          "episode": 8,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_31_transactions",
+            "ca_26_temperature"
+          ]
+        },
+        {
+          "episode": 9,
+          "task_type": "code_analysis",
+          "task_ids": [
+            "ca_08_phone",
+            "ca_36_date"
+          ]
+        },
+        {
+          "episode": 10,
+          "task_type": "record_extraction",
+          "task_ids": [
+            "text_43_insurance_claims",
+            "text_18_shipment_delays"
+          ]
+        }
+      ]
+    }
+  ],
+  "file_format": "{\"pairs\": [{\"tasks\": [task_id, task_id]}, ...]}, one entry per episode, in run order. No language: every code task ships a single variant, so the language is read off the pool entry rather than chosen and recorded."
+}

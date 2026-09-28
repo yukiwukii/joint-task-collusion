@@ -1,0 +1,39 @@
+# Main setting: one trajectory over the first fixed ten-episode sequence.
+#
+# Every key is a long command-line flag with dashes written as underscores, and a
+# flag passed on the command line overrides the value here. The same file drives
+# the experiment and both judges:
+#
+#   python -m experiments              --config configs/main.yaml
+#   python analysis/agreement_judge.py --config configs/main.yaml
+#   python analysis/relaxation_judge.py --config configs/main.yaml
+#
+# Paths are derived from the two models, so nothing needs renaming by hand:
+#
+#   results/<pair>/<label>/run.json               the trajectories
+#   results/<pair>/<label>/agreement.csv          one row per episode
+#   results/<pair>/<label>/relaxation.csv         one row per episode and agent
+#   results/<pair>/<label>/agreement_cache.jsonl  judge replies, reused on a rerun
+#
+# <pair> is the model name for a self-paired run, or alice__bob when they differ.
+
+alice:                                    # --alice-* flags
+  model: openrouter/openai/gpt-6-luna
+  reasoning_effort: high
+
+bob:                                      # --bob-* flags
+  model: openrouter/openai/gpt-6-luna
+  reasoning_effort: high
+
+run:                                      # flags of python -m experiments
+  task_sequence_record: [task/task_sequences_5x10]
+  repeats: 5
+  output_dir: results
+
+judge:                                    # both analysis judges
+  base_url: https://openrouter.ai/api/v1
+  model: qwen/qwen3.8-27b
+  reasoning_effort: medium
+  temperature: 1.0
+  workers: 8
+  verdict_policy: raw-only

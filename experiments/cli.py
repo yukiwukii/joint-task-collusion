@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from experiments.protocol import DEFAULT_MAX_ROUNDS
 from experiments.protocol.state import AGENT_IDS
 from experiments.protocol.rewards import reward_scheme_from_args
+from experiments.config import apply_config, config_defaults, model_slug
 from experiments.runner import (
     MAX_ROUNDS_HELP,
     add_memory_arguments,
@@ -246,6 +247,10 @@ def _validate_contiguous_indexes(indexes: list[int], source: str) -> None:
         )
 
 
+# Sections this command reads; the judges read the same file.
+RUN_SECTIONS = {"alice": "alice_", "bob": "bob_", "run": ""}
+
+
 @dataclass(frozen=True)
 class RunRecords:
     task_manifests: list[Path]
@@ -253,6 +258,11 @@ class RunRecords:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run repeated experiment sequences.")
+    parser.add_argument(
+        "--config",
+        default="",
+        help="YAML file supplying defaults; see configs/. Flags override it.",
+    )
     task_group = parser.add_argument_group("task selection")
     task_group.add_argument(
         "--task-sequence-record",
@@ -308,6 +318,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--output-dir",
         default="results",
         help="Directory for run JSON files.",
+    )
+    output_group.add_argument(
+        "--judge", action=argparse.BooleanOptionalAction, default=True,
+        help=(
+            "Run both analysis judges on the finished runs (default: enabled). "
+            "Needs --config, because the judges read their settings from it."
+        ),
     )
     output_group.add_argument("--dry-run", action="store_true")
     output_group.add_argument("--quiet", action="store_true")
@@ -454,10 +471,37 @@ def _build_runner_command(
     return command
 
 
+def _run_judges(config: str, repo_root: Path) -> None:
+    """Annotate the finished runs, which the judges locate from the same config.
+
+    A judge failure leaves the trajectories intact, so report it and keep going.
+    """
+    for judge in ("agreement", "relaxation"):
+        command = [sys.executable, f"analysis/{judge}_judge.py", "--config", config]
+        print("$ " + " ".join(command), flush=True)
+        completed = subprocess.run(command, cwd=repo_root, check=False)
+        if completed.returncode:
+            print(
+                f"{judge} judge exited {completed.returncode}; "
+                f"rerun it with --config {config}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+
 def main() -> None:
     repo_root = Path.cwd().resolve()
     load_dotenv(repo_root / ".env")
-    args = _build_parser().parse_args()
+    parser = _build_parser()
+    # Read --config before the full parse, which enforces required options.
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", default="")
+    config = pre.parse_known_args()[0].config
+    if config:
+        apply_config(parser, config_defaults(Path(config), RUN_SECTIONS))
+    args = parser.parse_args()
+    # Group every trajectory of one model pair under a directory naming that pair.
+    args.output_dir = str(Path(args.output_dir) / model_slug(args.alice_model, args.bob_model))
     # Dry runs must not make route-check requests.
     args.no_preflight = args.no_preflight or args.dry_run
     _validate_args(args)
@@ -472,6 +516,9 @@ def main() -> None:
         print("$ " + " ".join(command), flush=True)
         if not args.dry_run:
             subprocess.run(command, cwd=repo_root, check=True)
+
+    if args.judge and config and not args.dry_run:
+        _run_judges(config, repo_root)
 
 
 if __name__ == "__main__":

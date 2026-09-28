@@ -18,6 +18,7 @@ import csv
 import glob
 import hashlib
 import json
+import os
 import re
 import sys
 import threading
@@ -25,12 +26,25 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from experiments.config import (  # noqa: E402
+    apply_config,
+    config_defaults,
+    model_slug,
+)
+
+load_dotenv(ROOT / ".env")
 PROMPT_FILE = Path(__file__).with_name("relaxation_judge_prompts.md")
 
-DEFAULT_BASE_URL = "http://localhost:8042/v1"
-DEFAULT_MODEL = "qwen3.8-27b"
-DEFAULT_CACHE = "analysis/results/relaxation_cache.jsonl"
+DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+DEFAULT_MODEL = "qwen/qwen3.8-27b"
+# Reasoning effort and temperature requested from hosted routes.
+DEFAULT_REASONING_EFFORT = "medium"
+DEFAULT_TEMPERATURE = 1.0
 
 RUNG = "relaxation"
 GATE_VERSION = {RUNG: 2}
@@ -166,18 +180,28 @@ def cache_key(judge: str, model: str, prompt: str) -> str:
 
 
 class Judge:
-    def __init__(self, base_url: str, model: str, cache_path: Path, think: bool,
-                 max_tokens: int, timeout: float):
+    def __init__(self, base_url: str, model: str, think: bool,
+                 max_tokens: int, timeout: float, reasoning_effort: str,
+                 temperature: float):
         from openai import OpenAI
 
-        self.client = OpenAI(base_url=base_url, api_key="EMPTY", timeout=timeout)
+        self.client = OpenAI(base_url=base_url,
+                             api_key=os.environ.get("OPENROUTER_API_KEY", "EMPTY"),
+                             timeout=timeout)
+        self.local = "localhost" in base_url or "127.0.0.1" in base_url
         self.model = model
         self.think = think
+        self.reasoning_effort = reasoning_effort
+        self.temperature = temperature
         self.max_tokens = max_tokens
-        self.cache_path = cache_path
-        self.cache: dict[str, dict] = {}
+        # One cache per file, so each run's replies stay in that run's directory.
+        self.caches: dict[Path, dict[str, dict]] = {}
         self.lock = threading.Lock()
         self.calls = 0
+
+    def load_cache(self, cache_path: Path) -> int:
+        """Read one cache file up front; its entries are reused before any API call."""
+        entries: dict[str, dict] = {}
         if cache_path.exists():
             with cache_path.open() as handle:
                 for line in handle:
@@ -185,12 +209,16 @@ class Judge:
                         row = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    self.cache[row["key"]] = row["parsed"]
-
-    def _remember(self, key: str, parsed: dict, raw: str, reasoning: str = "") -> None:
+                    entries[row["key"]] = row["parsed"]
         with self.lock:
-            self.cache[key] = parsed
-            with self.cache_path.open("a") as handle:
+            self.caches.setdefault(cache_path, {}).update(entries)
+        return len(entries)
+
+    def _remember(self, cache_path: Path, key: str, parsed: dict, raw: str,
+                  reasoning: str = "") -> None:
+        with self.lock:
+            self.caches.setdefault(cache_path, {})[key] = parsed
+            with cache_path.open("a") as handle:
                 handle.write(json.dumps({
                     "key": key,
                     "parsed": parsed,
@@ -198,14 +226,16 @@ class Judge:
                     "reasoning": reasoning,
                 }, ensure_ascii=False) + "\n")
 
-    def ask(self, system: str, user: str, source: str) -> dict:
+    def ask(self, system: str, user: str, source: str, cache_path: Path) -> dict:
         key = cache_key(RUNG, self.model, system + "\x00" + user)
         with self.lock:
-            hit = self.cache.get(key)
+            hit = self.caches.get(cache_path, {}).get(key)
         if hit is not None and hit.get("parse_ok"):
             return hit
 
-        extra = {"chat_template_kwargs": {"enable_thinking": bool(self.think)}}
+        # chat_template_kwargs is a local-server field; hosted APIs reject it.
+        extra = ({"chat_template_kwargs": {"enable_thinking": bool(self.think)}} if self.local
+                 else {"reasoning": {"effort": self.reasoning_effort}})
         raw = ""
         reasoning = ""
         error = ""
@@ -220,9 +250,9 @@ class Judge:
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
-                    temperature=0.0,
+                    temperature=self.temperature,
                     max_tokens=self.max_tokens * (1, 2, 4)[attempt],
-                    extra_body=extra,
+                    extra_body=extra or None,
                 )
                 message = response.choices[0].message
                 raw = message.content or ""
@@ -258,7 +288,7 @@ class Judge:
             parsed = format_gate(parsed)
             parsed.update({"parse_ok": 1, "error": ""})
         parsed["reasoning_chars"] = len(reasoning)
-        self._remember(key, parsed, raw, reasoning)
+        self._remember(cache_path, key, parsed, raw, reasoning)
         return parsed
 
 
@@ -366,11 +396,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument("--config", default="",
+                        help="YAML file supplying defaults; see configs/. Flags override it.")
     parser.add_argument("--runs", nargs="+", required=True,
                         help="glob(s) matching run.json files, relative to the repo root")
-    parser.add_argument("--out", required=True, help="CSV to write")
-    parser.add_argument("--cache", default=DEFAULT_CACHE)
+    parser.add_argument("--out", default="",
+                        help="one combined CSV to write; the default writes "
+                             "relaxation.csv into each run's own directory")
+    parser.add_argument("--cache", default="",
+                        help="one shared cache file; the default keeps "
+                             "relaxation_cache.jsonl beside each run's CSV")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
+    parser.add_argument("--reasoning-effort", default=DEFAULT_REASONING_EFFORT)
+    parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--max-tokens", type=int, default=400)
@@ -383,6 +421,19 @@ def main() -> int:
                         help="after deduplicating repetitions, keep N per condition")
     parser.add_argument("--verdict-policy", default="",
                         help="only judge episodes under this verdict policy")
+    # Read --config before the full parse, which enforces required options.
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--config", default="")
+    config = pre.parse_known_args()[0].config
+    if config:
+        defaults = config_defaults(
+            Path(config), {"alice": "alice_", "bob": "bob_", "run": "", "judge": ""}
+        )
+        # Judge the run this config produces, writing beside its trajectories.
+        slug = model_slug(defaults.get("alice_model", ""), defaults.get("bob_model", ""))
+        results = Path(defaults.get("output_dir", "results")) / slug
+        defaults.setdefault("runs", [str(results / "*" / "run.json")])
+        apply_config(parser, defaults)
     args = parser.parse_args()
 
     paths: list[Path] = []
@@ -413,17 +464,30 @@ def main() -> int:
     check_prompts(prompts)
     blocks = prompts[RUNG]
 
-    cache_path = ROOT / args.cache
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
     judge = Judge(
-        args.base_url, args.model, cache_path, args.think, args.max_tokens, args.timeout
+        args.base_url, args.model, args.think, args.max_tokens,
+        args.timeout, args.reasoning_effort, args.temperature
     )
-    print(f"cache: {len(judge.cache)} entries at {cache_path}")
+
+    def cache_for(row: dict) -> Path:
+        """Cache beside the run's CSV, unless --cache names one shared file."""
+        if args.cache:
+            return ROOT / args.cache
+        return (ROOT / row["run_path"]).parent / f"{RUNG}_cache.jsonl"
+
+    entries = 0
+    cache_paths = sorted({cache_for(row) for row in rows})
+    for path in cache_paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entries += judge.load_cache(path)
+    print(f"cache: {entries} entries in {len(cache_paths)} file(s), "
+          f"e.g. {cache_paths[0]}")
 
     def work(index: int):
-        source = rows[index]["_reflection"]
+        row = rows[index]
+        source = row["_reflection"]
         user = render(blocks["user"], reflection=source or "(no reflection)")
-        return index, judge.ask(blocks["system"], user, source)
+        return index, judge.ask(blocks["system"], user, source, cache_for(row))
 
     def record_result(index: int, parsed: dict) -> None:
         row = rows[index]
@@ -448,14 +512,26 @@ def main() -> int:
 
     annotate_turning_points(rows)
 
-    out_path = ROOT / args.out
-    out_path.parent.mkdir(parents=True, exist_ok=True)
     fields = [key for key in rows[0] if not key.startswith("_")]
-    with out_path.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
-        writer.writeheader()
-        writer.writerows(rows)
-    print(f"wrote {len(rows)} rows -> {out_path}  (api calls: {judge.calls})")
+
+    def write_csv(out_path: Path, table: list[dict]) -> None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(table)
+        print(f"wrote {len(table)} rows -> {out_path}")
+
+    if args.out:
+        write_csv(ROOT / args.out, rows)
+    else:
+        # Default: one CSV per run, written beside the run.json it annotates.
+        by_run: dict[str, list[dict]] = defaultdict(list)
+        for row in rows:
+            by_run[row["run_path"]].append(row)
+        for run_path, table in sorted(by_run.items()):
+            write_csv((ROOT / run_path).parent / f"{RUNG}.csv", table)
+    print(f"api calls: {judge.calls}")
 
     print(f"\n=== reflection-level {RUNG} ===")
     print(f"{'model':>30} {'n_ref':>7} {RUNG[:8]:>8} {'agent_tp':>9} {'parse':>7}")

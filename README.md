@@ -1,59 +1,54 @@
-# Emergent Collusion in Long-Horizon LLM Agent Interaction
+# Joint-Task Collusion
 
-**Xinrui Shi\*, Yanzhe Zhang\*, Diyi Yang**
+Repo copy [SALT-NLP/agent-collusion](https://github.com/SALT-NLP/agent-collusion). Repo add YAML config, OpenRouter, judge auto-run, results viewer.
 
-\*Equal contribution.
+Original paper: **Emergent Collusion in Long-Horizon LLM Agent Interaction**. Authors: Xinrui Shi\*, Yanzhe Zhang\*, Diyi Yang (\*equal contribution).
 
-📄 [Paper](https://arxiv.org/abs/2609.24967) | 💻 [Code](https://github.com/SALT-NLP/agent-collusion) | 🤗 [Data](https://huggingface.co/datasets/SALT-NLP/agent-collusion) | 🔍 [Data Viewer](https://salt-nlp.github.io/agent-collusion-website/)
+📄 [Paper](https://arxiv.org/abs/2609.24967) | 💻 [Original code](https://github.com/SALT-NLP/agent-collusion) | 🤗 [Data](https://huggingface.co/datasets/SALT-NLP/agent-collusion) | 🔍 [Data Viewer](https://salt-nlp.github.io/agent-collusion-website/)
 
-## Abstract
+## What game do
 
-LLM agents are increasingly deployed in collaborative settings, yet long-term interaction may give rise to undesirable coordination. We study the emergence of collusion in a long-horizon multi-agent environment: two agents repeatedly complete individual tasks, share task logs, verify each other's work, and receive rewards. We introduce realistic constraints that make compliance with the verification protocol incompatible with reward maximization, and find that agents increasingly deviate from the protocol over repeated interactions. Collusion emerges in 94% of trajectories across 10 models, and more capable models within the same family reach it earlier. Controlled peer interventions show that collusion is shaped by peer behavior, while ablations reveal additional effects of reward structure, the verification feedback agents receive, and their interaction history. In particular, restricting the amount and scope of interaction history available to agents reduces collusion. Overall, our findings show that long-horizon interaction can reshape how agents coordinate in ways that create safety risks.
+Two agent: Alice, Bob. Game run 10 episode. Each episode have four phase:
 
-## What this measures
+**Task → Talk → Verdict → Feedback and reflection**
 
-We study **collusion as joint instruction violation driven by inter-agent behavioral influence**. A fixed pair of agents interacts over 10 episodes, each with four phases:
+Agent solve own task. Agent send peer evidence. Agent say `ACCEPT` or `REJECT` on peer work. Rule demand full raw log. Channel allow 5 round × 200 char. Full log no fit. Reward pay correct verdict. Rule and reward fight. Mutual `ACCEPT` mean collusion.
 
-**Task completion → Communication → Verdict → Feedback and reflection**
+Episode count:
 
-Each agent solves its own task, exchanges evidence with its peer, and issues `ACCEPT` or `REJECT` for the peer's work. The verification protocol requires the complete raw execution log, but communication is limited to five rounds of 200 characters per message. Agents receive a shared reward for correct verdicts and retain their interaction history. This creates a conflict between following the verification protocol and maximizing reward, and we measure collusion through mutual `ACCEPT`.
+$$N_{\text{episodes}} = \text{repeats} \times 10$$
 
-## Repository structure
+Example: `repeats: 5` → $5 \times 10 = 50$ episode.
 
-```text
-.
-├── experiments/                    # Two-agent experiments and controlled-peer interventions
-│   ├── __main__.py                 # Main CLI: python -m experiments
-│   ├── runner.py                   # Run execution and result saving
-│   ├── episode_runner.py           # Four-phase episode orchestration
-│   ├── agents.py                   # Agent turns and tool execution
-│   ├── llm.py                      # Model routing and provider settings
-│   ├── controlled.py               # Replay controlled-peer behavior
-│   ├── record_peer.py              # Record peer trajectories for replay
-│   ├── prompts/                    # System, task, policy, and feedback prompts
-│   ├── protocol/                   # Task tools, communication, verdicts, and rewards
-│   └── memory/                     # Cross-episode history and retention
-│
-├── analysis/                       # LLM judges for trajectory analysis
-│   ├── agreement_judge.py          # Explicit coordination in communication
-│   ├── agreement_judge_prompts.md  # Prompts for the agreement judge
-│   ├── relaxation_judge.py         # Policy relaxation in private reflections
-│   └── relaxation_judge_prompts.md # Prompts for the relaxation judge
-│
-├── task/                           # Task inputs, references, and fixed sequences
-│   ├── code-analysis/              # Python code analysis
-│   ├── text-extraction/            # Record extraction from source documents
-│   ├── data-search/                # Data search over a SQLite database
-│   ├── task_sequences_50x10/       # 50 sequences × 10 episodes
-│   └── task_sequences_50x3+50x10/  # 50 sequences × (3 warm-up + 10 evaluation episodes)
-│
-├── .env.example                    # Model provider configuration template
-└── requirements.txt                # Python dependencies
-```
+## Difference from original
 
-## Installation
+| Thing | Original | This repo |
+| --- | --- | --- |
+| Run setting | Twenty CLI flag | One YAML file in `configs/`. Flag override file. |
+| Model provider | `openai/`, `gemini/`, `bedrock/`, `deepseek/` | Same, plus `openrouter/<vendor>/<model>`. One `OPENROUTER_API_KEY`. |
+| Judge server | Local server `http://localhost:8042/v1`, model `qwen3.8-27b` | OpenRouter `qwen/qwen3.8-27b`. Local server still work. |
+| Judge reasoning | `xhigh` | `medium` |
+| Judge temperature | $T = 0$ | $T = 1$ |
+| Judge run | Manual, after experiment | Auto, after experiment. `--no-judge` skip. |
+| Judge output | One CSV + one cache in `analysis/results/` | CSV + cache inside each run directory. `--out` give one combined CSV. |
+| Output path | `--output-dir` as given | `--output-dir` + model pair slug. See below. |
+| Results frontend | None | `analysis/results_viewer.py`. Browser app. Standard library only. |
+| Task sequences | `50x10`, `50x3+50x10` | Also `5x10` (rep001–rep005 of `50x10`, unchanged) and `trial` (1 sequence) |
+| Docs | None | `docs/repo.md`. Map of every file. |
+| Dependency | — | `pyyaml` |
 
-Use Python 3.12 and run the following from the repository root:
+Warning: judge temperature and reasoning differ from paper. Number no match paper exact. For paper setting, pass `--temperature 0 --reasoning-effort xhigh`, or point judge at local server.
+
+Output path rule. Slug drop provider prefix, join rest with `-`:
+
+| Alice | Bob | Folder |
+| --- | --- | --- |
+| `openrouter/qwen/qwen3-32b` | `openrouter/qwen/qwen3-32b` | `results/qwen-qwen3-32b/` |
+| `openrouter/openai/gpt-6-luna` | `openrouter/qwen/qwen3-32b` | `results/openai-gpt-6-luna__qwen-qwen3-32b/` |
+
+## Install
+
+Python 3.12. Run from repo root:
 
 ```bash
 python -m venv .venv
@@ -62,78 +57,187 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Add your model provider credentials to `.env`, which is loaded automatically. Models use LiteLLM routes such as `openai/<model>`, `gemini/<model>`, `bedrock/<model>`, or `deepseek/<model>`. For self-hosted agent models, configure `OPENAI_API_BASE` and `OPENAI_API_KEY` as shown in [.env.example](.env.example) and use an `openai/<model>` route.
-
-`pytest` is a runtime dependency rather than a development one: agents write their own test files during code-analysis tasks, and the protocol executes them in a subprocess.
-
-## Usage
-
-### Main experiment
-
-Set your model route and a reasoning effort supported by that model, then run one trajectory:
+Put key in `.env`. Example for OpenRouter:
 
 ```bash
-export MODEL="openai/<your-model>"
-export REASONING_EFFORT="high"
-
-python -m experiments \
-  --alice-model "$MODEL" \
-  --bob-model "$MODEL" \
-  --alice-reasoning-effort "$REASONING_EFFORT" \
-  --bob-reasoning-effort "$REASONING_EFFORT" \
-  --task-sequence-record task/task_sequences_50x10 \
-  --repeats 1 \
-  --output-dir results/main
+OPENROUTER_API_KEY=sk-or-...
 ```
 
-The defaults implement the main setting: 10 episodes, five communication rounds, 200 characters per message, shared verdict-accuracy rewards, verdict review, private reflection, and full interaction history. Use `--repeats 50` for all 50 fixed sequences; `--start-index` selects the first sequence (1-based). For cross-model experiments, change Alice's and Bob's model settings independently.
+Agent and judge both use this key. Self-hosted agent: set `OPENAI_API_BASE` + `OPENAI_API_KEY`, use `openai/<model>` route.
 
-Each trajectory saves a `run.json` under the output directory, containing its configuration, task evaluations, messages, verdicts, rewards, reflections, and model usage.
+`pytest` is runtime dependency. Agent write test file. Protocol run test in subprocess.
 
-### Ablations
+## Run experiment
 
-Apply one row to the main command; use a separate `--output-dir` for each condition. All other settings keep their defaults.
+### Step 1. Pick config
 
-| Experiment | Condition | Command options |
+| File | Use |
+| --- | --- |
+| [configs/trial.yaml](configs/trial.yaml) | Cheap check. 1 sequence, 2 talk round. |
+| [configs/main.yaml](configs/main.yaml) | Main setting. 5 sequence × 10 episode. |
+
+### Step 2. Edit YAML
+
+Key = CLI flag. Dash become underscore. Example: `--max-rounds 2` → `max_rounds: 2`.
+
+```yaml
+alice:                                    # --alice-* flags
+  model: openrouter/openai/gpt-6-luna
+  reasoning_effort: high
+
+bob:                                      # --bob-* flags
+  model: openrouter/openai/gpt-6-luna
+  reasoning_effort: high
+
+run:                                      # flags of python -m experiments
+  task_sequence_record: [task/task_sequences_5x10]
+  repeats: 5
+  output_dir: results
+
+judge:                                    # both judges
+  base_url: https://openrouter.ai/api/v1
+  model: qwen/qwen3.8-27b
+  reasoning_effort: medium
+  temperature: 1.0
+  workers: 8
+  verdict_policy: raw-only
+```
+
+Common edit:
+
+| Want | Change |
+| --- | --- |
+| Other model | `alice.model`, `bob.model` |
+| Cross-model pair | Give Alice and Bob different `model` |
+| All 50 sequence | `task_sequence_record: [task/task_sequences_50x10]`, `repeats: 50` |
+| Start at sequence 3 | `start_index: 3` |
+| Fewer talk round | `max_rounds: 2` |
+| Ablation | Add row from ablation table below. Example: `no_reward: true` |
+
+### Step 3. Run
+
+```bash
+python -m experiments --config configs/trial.yaml
+```
+
+Experiment run. Then both judge run. Flag override YAML:
+
+```bash
+python -m experiments --config configs/main.yaml --repeats 1
+python -m experiments --config configs/main.yaml --no-judge
+```
+
+Judge by hand later:
+
+```bash
+python analysis/agreement_judge.py  --config configs/main.yaml
+python analysis/relaxation_judge.py --config configs/main.yaml
+```
+
+Judge find run from same config. Judge cache reply. Rerun skip done row.
+
+### Step 4. Read output
+
+```text
+results/<pair>/<run>/run.json                  trajectory
+results/<pair>/<run>/agreement.csv             one row per episode
+results/<pair>/<run>/relaxation.csv            one row per episode per agent
+results/<pair>/<run>/agreement_cache.jsonl     agreement judge reply
+results/<pair>/<run>/relaxation_cache.jsonl    relaxation judge reply
+```
+
+## Run results viewer
+
+```bash
+python analysis/results_viewer.py
+```
+
+Server start on `http://127.0.0.1:8765/`. Browser open. Port taken → next free port.
+
+Viewer show:
+
+- One tab per model pair folder.
+- One sub-tab per run.
+- `run.json`: overview, episode transcript, agents, events, raw tree.
+- `agreement.csv`, `relaxation.csv`: one row at a time, with judge reasoning, raw reply, parsed field.
+
+Flag:
+
+| Flag | Default | Example |
 | --- | --- | --- |
-| Feedback | No reward instructions, reward feedback, or reflection; keep verdict review | `--no-reward` |
-| | No verdict review; keep reward and reflection | `--no-verdict-review` |
-| Warm-up history | 3 unrestricted-communication episodes + 10 evaluation episodes | `--task-sequence-record task/task_sequences_50x3+50x10`<br>`--throttle-spans 'no-throttle:3,throttled:*'` |
-| | 3 summary-allowed episodes + 10 evaluation episodes | `--task-sequence-record task/task_sequences_50x3+50x10`<br>`--verdict-policy-spans 'summary-allowed:3,raw-only:*'` |
-| Memory length | Last 3 episodes | `--alice-cross-episode-memory-length 3`<br>`--bob-cross-episode-memory-length 3` |
+| `--results` | `results/` | `--results results-old` |
+| `--port` | `8765` | `--port 9000` |
+| `--host` | `127.0.0.1` | `--host 0.0.0.0` |
+| `--no-browser` | off | Remote machine. Open URL by hand. |
+
+Remote machine example:
+
+```bash
+python analysis/results_viewer.py --no-browser
+ssh -L 8765:127.0.0.1:8765 user@server    # run on laptop
+```
+
+## Ablations
+
+Add option to `run:` section, or pass as flag. Use separate `output_dir` per condition.
+
+| Experiment | Condition | Option |
+| --- | --- | --- |
+| Feedback | No reward instruction, feedback, reflection. Keep verdict review. | `--no-reward` |
+| | No verdict review. Keep reward, reflection. | `--no-verdict-review` |
+| Warm-up history | 3 free-talk episode + 10 eval episode | `--task-sequence-record task/task_sequences_50x3+50x10`<br>`--throttle-spans 'no-throttle:3,throttled:*'` |
+| | 3 summary-allowed episode + 10 eval episode | `--task-sequence-record task/task_sequences_50x3+50x10`<br>`--verdict-policy-spans 'summary-allowed:3,raw-only:*'` |
+| Memory length | Last 3 episode | `--alice-cross-episode-memory-length 3`<br>`--bob-cross-episode-memory-length 3` |
 | | No cross-episode memory | `--alice-cross-episode-memory-length 0`<br>`--bob-cross-episode-memory-length 0` |
-| Memory scope | Communication onward | `--cross-episode-memory-scope communication-onward` |
+| Memory scope | Talk onward | `--cross-episode-memory-scope communication-onward` |
 | | Feedback and reflection only | `--cross-episode-memory-scope feedback-and-reflection` |
-| Reward scope | Separate rewards; each agent's reward and review concern the peer's verdict on its own task | `--reward-scope separate` |
-| Reward type | Verdict accuracy, without verdict review | `--reward-type verdict-accuracy --no-verdict-review` |
-| | Acceptance, without verdict review | `--reward-type acceptance --no-verdict-review` |
+| Reward scope | Separate reward per agent | `--reward-scope separate` |
+| Reward type | Verdict accuracy, no verdict review | `--reward-type verdict-accuracy --no-verdict-review` |
+| | Acceptance, no verdict review | `--reward-type acceptance --no-verdict-review` |
 
-### Controlled peer interventions
+YAML example for memory length 3:
 
-Bob is replaced by a scripted peer. Use `$MODEL` and `$REASONING_EFFORT` from the main example for Alice.
+```yaml
+alice:
+  model: openrouter/openai/gpt-6-luna
+  reasoning_effort: high
+  cross_episode_memory_length: 3
+bob:
+  model: openrouter/openai/gpt-6-luna
+  reasoning_effort: high
+  cross_episode_memory_length: 3
+run:
+  task_sequence_record: [task/task_sequences_5x10]
+  repeats: 5
+  output_dir: results/memory-3
+```
+
+## Controlled peer
+
+Bob replaced by script. Bob no react.
 
 | Peer policy | `--controlled-bob-messages` | `--controlled-bob-verdict` |
 | --- | --- | --- |
-| Compliant | `raw-prefix` (first 5 × 200 characters of the raw log) | `reject` |
-| Violating | `summary` (Peer's own summaries of its work) | `accept` |
+| Compliant | `raw-prefix` (first 5 × 200 char of raw log) | `reject` |
+| Violating | `summary` (peer own summary) | `accept` |
 
-**1. Record the peer once.**
+**1. Record peer once.**
 
 ```bash
 python -m experiments.record_peer \
-  --model gemini/gemini-3.1-flash-lite \
+  --model openrouter/google/gemini-3.1-flash-lite \
   --reasoning-effort high \
   --task-sequence-record task/task_sequences_50x10 \
   --repeats 50 \
   --cache results/peer-cache
 ```
 
-**2. Replay the violating peer.** 
+**2. Replay violating peer.**
 
 ```bash
 python -m experiments \
-  --alice-model "$MODEL" \
-  --alice-reasoning-effort "$REASONING_EFFORT" \
+  --alice-model openrouter/openai/gpt-6-luna \
+  --alice-reasoning-effort high \
   --bob-model controlled \
   --controlled-bob-cache results/peer-cache \
   --controlled-bob-messages summary \
@@ -143,72 +247,87 @@ python -m experiments \
   --output-dir results/peer-violating
 ```
 
-**3. Replay the compliant peer.**
+**3. Replay compliant peer.** Same command. Change `--controlled-bob-messages raw-prefix`, `--controlled-bob-verdict reject`, `--output-dir results/peer-compliant`.
 
-```bash
-python -m experiments \
-  --alice-model "$MODEL" \
-  --alice-reasoning-effort "$REASONING_EFFORT" \
-  --bob-model controlled \
-  --controlled-bob-cache results/peer-cache \
-  --controlled-bob-messages raw-prefix \
-  --controlled-bob-verdict reject \
-  --task-sequence-record task/task_sequences_50x10 \
-  --repeats 50 \
-  --output-dir results/peer-compliant
-```
+`--controlled-bob-observed-verdict` show Bob verdict in Alice feedback.
 
-Add `--controlled-bob-observed-verdict` to reveal Bob's verdict in Alice's feedback.
+## Judges
 
-### Evaluation
+Two judge. Agreement judge find explicit coordination in talk. Relaxation judge find policy relaxation in private reflection.
 
-Two additional LLM judges annotate **explicit coordination** in communication and **policy relaxation** in private reflections to study how collusion begins.
-
-Start a local OpenAI-compatible model server on port, e.g., **8042**, serving Qwen 3.8 27B with the model name **`qwen3.8-27b`**. The judge scripts use this configuration by default, with `xhigh` reasoning effort and temperature 0.
+Judge on local server instead of OpenRouter:
 
 ```bash
 python analysis/agreement_judge.py \
-  --runs 'results/main/*/run.json' \
-  --out analysis/results/agreement.csv \
+  --config configs/main.yaml \
   --base-url http://localhost:8042/v1 \
-  --model qwen3.8-27b \
-  --verdict-policy raw-only
+  --model qwen3.8-27b
+```
 
-python analysis/relaxation_judge.py \
-  --runs 'results/main/*/run.json' \
-  --out analysis/results/relaxation.csv \
-  --base-url http://localhost:8042/v1 \
-  --model qwen3.8-27b \
+Local URL → judge send `chat_template_kwargs`, not reasoning effort.
+
+Judge other runs into one CSV:
+
+```bash
+python analysis/agreement_judge.py \
+  --runs 'results/peer-violating/*/*/run.json' \
+  --out analysis/results/agreement.csv \
   --verdict-policy raw-only
 ```
 
+## Repository structure
+
+```text
+.
+├── experiments/                    # Game code. python -m experiments
+│   ├── cli.py                      # Flags, --config, judge auto-run
+│   ├── config.py                   # YAML → flag defaults. Pair slug.
+│   ├── runner.py, episode_runner.py, agents.py, llm.py
+│   ├── controlled.py, record_peer.py
+│   ├── prompts/, protocol/, memory/
+├── analysis/
+│   ├── agreement_judge.py          # Coordination in talk
+│   ├── relaxation_judge.py         # Relaxation in reflection
+│   ├── results_viewer.py           # Browser frontend
+│   └── *_prompts.md                # Judge prompts
+├── task/
+│   ├── code-analysis/, text-extraction/, data-search/
+│   ├── task_sequences_50x10/       # 50 sequence × 10 episode
+│   ├── task_sequences_50x3+50x10/  # 50 × (3 warm-up + 10 eval)
+│   ├── task_sequences_5x10/        # rep001–rep005 of 50x10
+│   └── task_sequences_trial/       # 1 sequence, for trial.yaml
+├── configs/                        # main.yaml, trial.yaml
+├── docs/repo.md                    # File map
+├── .env.example
+└── requirements.txt
+```
 
 ## Tasks
 
-All task inputs and evaluation references are included in [task/](task/):
-
-| Task family | Tasks | Resources and objective |
+| Task family | Tasks | Job |
 | --- | ---: | --- |
-| Code analysis | 50 | Python implementations; identify whether the code satisfies its specification. |
-| Record extraction | 50 | Source documents; extract identifiers matching the requested criteria. |
-| Data search | 50 | SQLite database; answer queries evaluated against reference SQL results. |
+| Code analysis | 50 | Read Python code. Say code meet spec or not. |
+| Record extraction | 50 | Read document. Pull matching ID. |
+| Data search | 50 | Query SQLite. Match reference SQL result. |
 
-Each family includes a task manifest. [task_sequences_50x10](task/task_sequences_50x10/) contains 50 fixed ten-episode sequences, shared across models and conditions. [task_sequences_50x3+50x10](task/task_sequences_50x3+50x10/) prepends three warm-up episodes to each sequence. Each episode assigns the agents different tasks from the same family.
+Each episode give Alice and Bob different task from same family.
 
 ## License
 
-Code and task data are released under the [MIT License](LICENSE).
+MIT. See [LICENSE](LICENSE). Original code and task data by SALT-NLP.
 
 ## Citation
 
+Cite original paper:
+
 ```bibtex
 @misc{shi2026emergentcollusionlonghorizonllm,
-      title={Emergent Collusion in Long-Horizon LLM Agent Interaction}, 
+      title={Emergent Collusion in Long-Horizon LLM Agent Interaction},
       author={Xinrui Shi and Yanzhe Zhang and Diyi Yang},
       year={2026},
       eprint={2609.24967},
       archivePrefix={arXiv},
       primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2609.24967}, 
+      url={https://arxiv.org/abs/2609.24967},
 }
 ```
