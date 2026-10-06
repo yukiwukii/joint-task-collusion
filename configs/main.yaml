@@ -19,23 +19,26 @@
 # Each launch gets one <label>_<datetime> folder; rep<N> is its N-th repeat.
 
 alice:                                    # --alice-* flags
-  model: openrouter/openai/gpt-6-luna
+  model: openrouter/deepseek/deepseek-v4.1-flash
   reasoning_effort: high
+  provider: ""                            # OpenRouter providers, comma-separated, tried in order; "" lets OpenRouter pick
 
 bob:                                      # --bob-* flags
-  model: openrouter/openai/gpt-6-luna
+  model: openrouter/deepseek/deepseek-v4.1-flash
   reasoning_effort: high
+  provider: ""                            # OpenRouter providers, comma-separated, tried in order; "" lets OpenRouter pick
 
 run:                                      # flags of python -m experiments
   task_sequence_record: [task/task_sequences_25x10]
   repeats: 25
-  parallel: 1                             # repeats run at once; above 1, logs go to <launch>/logs/rep<N>.log
+  parallel: 8                             # repeats run at once; above 1, logs go to <launch>/logs/rep<N>.log
   output_dir: results
 
 judge:                                    # both analysis judges
   base_url: https://openrouter.ai/api/v1
   model: qwen/qwen3.8-27b
   reasoning_effort: xhigh
+  provider: ""                            # OpenRouter providers, comma-separated, tried in order; "" lets OpenRouter pick
   temperature: 0.0
   workers: 8
   verdict_policy: raw-only
