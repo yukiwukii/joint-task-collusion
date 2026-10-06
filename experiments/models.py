@@ -22,6 +22,8 @@ class AgentConfig:
     reasoning_effort: str = "default"
     temperature: float = DEFAULT_LLM_TEMPERATURE
     max_output_tokens: int = DEFAULT_LLM_MAX_OUTPUT_TOKENS
+    # Comma-separated OpenRouter providers allowed to serve calls; empty lets OpenRouter pick.
+    provider: str = ""
 
 
 @dataclass(frozen=True)

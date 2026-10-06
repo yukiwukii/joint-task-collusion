@@ -134,6 +134,15 @@ def add_model_arguments(parser: argparse.ArgumentParser) -> None:
                 f"{DEFAULT_LLM_MAX_OUTPUT_TOKENS}."
             ),
         )
+        group.add_argument(
+            _agent_flag(agent_id, "provider"),
+            default="",
+            help=(
+                f"{agent_id} OpenRouter providers allowed to serve calls, comma-separated "
+                "and tried in order (e.g. deepinfra,novita); no fallback to others. "
+                "Default lets OpenRouter pick."
+            ),
+        )
 
 
 def add_memory_arguments(
@@ -324,6 +333,7 @@ def _resolve_model_settings(args: argparse.Namespace) -> None:
             "reasoning-effort": getattr(args, f"{agent_id}_reasoning_effort"),
             "temperature": getattr(args, f"{agent_id}_temperature"),
             "max-output-tokens": getattr(args, f"{agent_id}_max_output_tokens"),
+            "provider": getattr(args, f"{agent_id}_provider"),
         }
         if agent_id == "bob" and replays_controlled_bob(args):
             supplied = [name for name, value in settings.items() if value not in (None, "")]
@@ -391,6 +401,7 @@ def validate_run_args(args: argparse.Namespace) -> None:
             reasoning_effort=getattr(args, f"{agent_id}_reasoning_effort"),
             temperature=getattr(args, f"{agent_id}_temperature"),
             max_output_tokens=getattr(args, f"{agent_id}_max_output_tokens"),
+            provider_order=getattr(args, f"{agent_id}_provider"),
             probe=not args.no_preflight,
         )
 
@@ -647,6 +658,7 @@ def _run_selected_episodes(
             reasoning_effort=getattr(args, f"{agent_id}_reasoning_effort"),
             temperature=getattr(args, f"{agent_id}_temperature"),
             max_output_tokens=getattr(args, f"{agent_id}_max_output_tokens"),
+            provider=getattr(args, f"{agent_id}_provider"),
         )
         for agent_id in AGENT_IDS
     }

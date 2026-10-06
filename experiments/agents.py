@@ -740,6 +740,7 @@ def run_agent_turn(
     temperature: float = DEFAULT_LLM_TEMPERATURE,
     max_output_tokens: int = DEFAULT_LLM_MAX_OUTPUT_TOKENS,
     usage_recorder: UsageRecorder | None = None,
+    provider_order: str = "",
 ) -> dict[str, Any]:
     # The same list goes out in every phase so the prompt cache survives phase changes.
     # The dispatcher rejects tools outside the current phase and task type.
@@ -748,6 +749,7 @@ def run_agent_turn(
         model,
         reasoning_effort,
         passthrough_params=("tool_choice",),
+        provider_order=provider_order,
     )
     tools, effective_tool_choice = _select_tools_and_choice(
         tools=tools,
@@ -807,6 +809,7 @@ def run_reflection_turn(
     temperature: float = DEFAULT_LLM_TEMPERATURE,
     max_output_tokens: int = DEFAULT_LLM_MAX_OUTPUT_TOKENS,
     usage_recorder: UsageRecorder | None = None,
+    provider_order: str = "",
 ) -> dict[str, Any]:
     """Generate a prose reflection from the agent history without executing tools.
 
@@ -815,7 +818,9 @@ def run_reflection_turn(
     """
     # Same list as the agent's phase turns, so the reflection reuses their cached prefix.
     tools = get_run_tool_schemas(peer=peer_id(actor))
-    extra = get_litellm_completion_kwargs(model, reasoning_effort)
+    extra = get_litellm_completion_kwargs(
+        model, reasoning_effort, provider_order=provider_order
+    )
     response, choice_message, content, _ = _complete_with_retries(
         model=model,
         messages=messages,

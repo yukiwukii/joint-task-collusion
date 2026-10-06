@@ -297,6 +297,8 @@ def normalize_llm_usage(
     return {
         "requested_model": requested_model,
         "response_model": _get_attr(response, "model", requested_model),
+        # OpenRouter names the upstream provider that served the call; other routes omit it.
+        "response_provider": _get_attr(response, "provider", None),
         "input_tokens": reported.input_tokens,
         "reasoning_tokens": reasoning_tokens,
         "output_tokens": output_tokens,

@@ -108,6 +108,7 @@ Common edit:
 | All 50 sequence | `task_sequence_record: [task/task_sequences_50x10]`, `repeats: 50` |
 | Start at sequence 3 | `start_index: 3` |
 | Faster run | `parallel: 5`. 25 repeat take about 1h10m, not 6h10m. Cost same. |
+| Pin OpenRouter provider | `provider: deepinfra` under `alice`, `bob` or `judge`. Comma list = try in order (`deepinfra,novita`). No fallback to other provider. Empty = OpenRouter pick. |
 | Fewer talk round | `max_rounds: 2` |
 | Ablation | Add row from ablation table below. Example: `no_reward: true` |
 
@@ -152,7 +153,7 @@ results/<pair>/<run>/rep<N>/agreement.csv           one row per episode
 results/<pair>/<run>/rep<N>/relaxation.csv          one row per episode per agent
 results/<pair>/<run>/rep<N>/agreement_cache.jsonl   agreement judge reply
 results/<pair>/<run>/rep<N>/relaxation_cache.jsonl  relaxation judge reply
-results/<pair>/<run>/rep<N>/llm_usage.jsonl         one row per LLM call, with cost_usd
+results/<pair>/<run>/rep<N>/llm_usage.jsonl         one row per LLM call, with cost_usd and response_provider
 results/<pair>/<run>/logs/rep<N>.log                console output, only with parallel above 1
 ```
 

@@ -126,18 +126,44 @@ def _deepseek_effort_kwargs(reasoning_effort: str) -> dict[str, Any]:
     return {"reasoning_effort": reasoning_effort}
 
 
+def parse_provider_order(value: str) -> list[str]:
+    """Split a comma-separated list of OpenRouter provider names; empty means any."""
+    return [name.strip() for name in value.split(",") if name.strip()]
+
+
+def openrouter_provider_routing(model: str, provider_order: str) -> dict[str, Any]:
+    """Build OpenRouter's ``provider`` request field, pinning calls to the named providers.
+
+    Fallbacks are disabled so a run never silently moves to a provider it did not name.
+    Only OpenRouter routes accept the field, so other routes reject a non-empty order.
+    """
+    order = parse_provider_order(provider_order)
+    if not order:
+        return {}
+    if resolve_provider(model)[1] != "openrouter":
+        raise ValueError(
+            f"A provider order applies only to openrouter/ models; got {model!r}."
+        )
+    return {"provider": {"order": order, "allow_fallbacks": False}}
+
+
 def get_litellm_completion_kwargs(
     model: str,
     reasoning_effort: str,
     passthrough_params: Iterable[str] = (),
+    provider_order: str = "",
 ) -> dict[str, Any]:
     """Build reasoning kwargs and passthrough overrides for ``litellm.completion``.
 
     Credentials come from the environment. ``passthrough_params`` lists additional
     OpenAI fields that must reach the endpoint, such as ``tool_choice``.
+    ``provider_order`` names the OpenRouter providers allowed to serve the call.
     """
     model_name, provider = resolve_provider(model)
     kwargs: dict[str, Any] = {}
+    routing = openrouter_provider_routing(model, provider_order)
+    if routing:
+        kwargs["extra_body"] = routing
     requested_params = list(passthrough_params)
     forced_params: list[str] = []
     normalized_reasoning_effort = reasoning_effort.strip().lower()
@@ -425,9 +451,12 @@ def validate_model_route(
     reasoning_effort: str = "default",
     temperature: float = DEFAULT_LLM_TEMPERATURE,
     max_output_tokens: int = DEFAULT_LLM_MAX_OUTPUT_TOKENS,
+    provider_order: str = "",
     probe: bool = True,
 ) -> None:
     """Probe a model with a small request before starting the run."""
+    # Reject a provider order on a non-OpenRouter route even without the probe.
+    openrouter_provider_routing(model, provider_order)
     if not probe:
         return
     try:
@@ -439,7 +468,9 @@ def validate_model_route(
             # LiteLLM maps this output ceiling to max_completion_tokens,
             # max_output_tokens, or maxTokens for the selected provider.
             max_tokens=max_output_tokens,
-            **get_litellm_completion_kwargs(model, reasoning_effort),
+            **get_litellm_completion_kwargs(
+                model, reasoning_effort, provider_order=provider_order
+            ),
         )
     except REACHABLE_DESPITE_ERRORS:
         return

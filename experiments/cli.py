@@ -457,6 +457,10 @@ def _build_runner_command(
                     str(getattr(args, f"{agent_id}_max_output_tokens")),
                 ]
             )
+            if getattr(args, f"{agent_id}_provider"):
+                command.extend(
+                    [f"--{flag}-provider", getattr(args, f"{agent_id}_provider")]
+                )
         command.extend(
             [
                 f"--{flag}-cross-episode-memory-length",

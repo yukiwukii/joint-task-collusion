@@ -182,7 +182,7 @@ def cache_key(judge: str, model: str, prompt: str) -> str:
 class Judge:
     def __init__(self, base_url: str, model: str, think: bool,
                  max_tokens: int, timeout: float, reasoning_effort: str,
-                 temperature: float):
+                 temperature: float, provider: str = ""):
         from openai import OpenAI
 
         self.client = OpenAI(base_url=base_url,
@@ -194,6 +194,8 @@ class Judge:
         self.reasoning_effort = reasoning_effort
         self.temperature = temperature
         self.max_tokens = max_tokens
+        # OpenRouter providers allowed to serve calls, in order; empty lets OpenRouter pick.
+        self.provider_order = [name.strip() for name in provider.split(",") if name.strip()]
         # One cache per file, so each run's replies stay in that run's directory.
         self.caches: dict[Path, dict[str, dict]] = {}
         self.lock = threading.Lock()
@@ -215,7 +217,7 @@ class Judge:
         return len(entries)
 
     def _remember(self, cache_path: Path, key: str, parsed: dict, raw: str,
-                  reasoning: str = "") -> None:
+                  reasoning: str = "", provider: str | None = None) -> None:
         with self.lock:
             self.caches.setdefault(cache_path, {})[key] = parsed
             with cache_path.open("a") as handle:
@@ -224,6 +226,7 @@ class Judge:
                     "parsed": parsed,
                     "raw": raw[:4000],
                     "reasoning": reasoning,
+                    "provider": provider,
                 }, ensure_ascii=False) + "\n")
 
     def ask(self, system: str, user: str, source: str, cache_path: Path) -> dict:
@@ -236,10 +239,13 @@ class Judge:
         # chat_template_kwargs is a local-server field; hosted APIs reject it.
         extra = ({"chat_template_kwargs": {"enable_thinking": bool(self.think)}} if self.local
                  else {"reasoning": {"effort": self.reasoning_effort}})
+        if self.provider_order and not self.local:
+            extra["provider"] = {"order": self.provider_order, "allow_fallbacks": False}
         raw = ""
         reasoning = ""
         error = ""
         value = None
+        served_by = None
         request_count = 0
         for attempt in range(3):
             try:
@@ -254,6 +260,8 @@ class Judge:
                     max_tokens=self.max_tokens * (1, 2, 4)[attempt],
                     extra_body=extra or None,
                 )
+                # OpenRouter names the upstream provider that served the call.
+                served_by = getattr(response, "provider", None)
                 message = response.choices[0].message
                 raw = message.content or ""
                 reasoning = (
@@ -288,7 +296,7 @@ class Judge:
             parsed = format_gate(parsed)
             parsed.update({"parse_ok": 1, "error": ""})
         parsed["reasoning_chars"] = len(reasoning)
-        self._remember(cache_path, key, parsed, raw, reasoning)
+        self._remember(cache_path, key, parsed, raw, reasoning, served_by)
         return parsed
 
 
@@ -410,6 +418,9 @@ def main() -> int:
     parser.add_argument("--reasoning-effort", default=DEFAULT_REASONING_EFFORT)
     parser.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--provider", default="",
+                        help="OpenRouter providers allowed to serve judge calls, "
+                             "comma-separated and tried in order; no fallback to others")
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--max-tokens", type=int, default=400)
     parser.add_argument("--timeout", type=float, default=180.0)
@@ -466,7 +477,7 @@ def main() -> int:
 
     judge = Judge(
         args.base_url, args.model, args.think, args.max_tokens,
-        args.timeout, args.reasoning_effort, args.temperature
+        args.timeout, args.reasoning_effort, args.temperature, args.provider
     )
 
     def cache_for(row: dict) -> Path:

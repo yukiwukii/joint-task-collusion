@@ -263,6 +263,7 @@ def build_run_output(
                         args,
                         f"{agent_id}_reasoning_effort",
                     ),
+                    "provider": getattr(args, f"{agent_id}_provider", ""),
                 }
                 for agent_id in AGENT_IDS
             },
