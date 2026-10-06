@@ -29,6 +29,7 @@ bob:                                      # --bob-* flags
 run:                                      # flags of python -m experiments
   task_sequence_record: [task/task_sequences_25x10]
   repeats: 25
+  parallel: 1                             # repeats run at once; above 1, logs go to <launch>/logs/rep<N>.log
   output_dir: results
 
 judge:                                    # both analysis judges

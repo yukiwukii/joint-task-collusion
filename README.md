@@ -120,7 +120,7 @@ Common edit:
 python -m experiments --config configs/trial.yaml
 ```
 
-Experiment run. Then both judge run. Flag override YAML:
+Experiment run. Then both judge run on this launch only. Flag override YAML:
 
 ```bash
 python -m experiments --config configs/main.yaml --repeats 1
@@ -134,7 +134,7 @@ python analysis/agreement_judge.py  --config configs/main.yaml
 python analysis/relaxation_judge.py --config configs/main.yaml
 ```
 
-Judge find run from same config. Judge cache reply. Rerun skip done row.
+Judge find run from same config: every launch of that model pair. One launch only: add `--runs 'results/<pair>/<label>_<datetime>/rep*/run.json'`. Judge cache reply. Rerun skip done row.
 
 ### Step 4. Read output
 
