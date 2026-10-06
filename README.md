@@ -158,7 +158,7 @@ Viewer show:
 
 - One tab per model pair folder.
 - One sub-tab per run (one launch of `python -m experiments`).
-- Per run, one tab per rep.
+- Per run, `Summary` tab first: paper EC, TC, CC over all reps, from `run.json` verdicts. Then one tab per rep.
 - `run.json`: overview, episode transcript, agents, events, raw tree.
 - `agreement.csv`, `relaxation.csv`: one row at a time, with judge reasoning, raw reply, parsed field.
 
