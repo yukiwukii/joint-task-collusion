@@ -5,6 +5,7 @@ and ends with the available tools. Task and communication openings describe the
 agent's own task and its peer's task respectively; verdict openings add no new task.
 """
 
+import json
 from typing import Sequence
 
 from experiments.prompts.policies import (
@@ -51,7 +52,11 @@ def _output_format_block(tool_names: Sequence[str], scope: str) -> str:
     else:
         noun, verb = "tools", "are"
         listed = f"{', '.join(names[:-1])} and {names[-1]}"
-    return f"Only act via tool calls. The {noun} for {scope} {verb} {listed}."
+    return (
+        f"Only act via tool calls. The {noun} for {scope} {verb} {listed}. "
+        "Your tool list also holds tools for other phases and task types. In "
+        f"{scope}, any tool not named here is rejected and its turn still counts."
+    )
 
 
 def _phase_opening_message(
@@ -86,11 +91,12 @@ def _own_task_message(
     task_information: str,
     task_workflow: str,
     tool_results: str,
+    answer_format: str,
 ) -> str:
     """Introduce the agent's own task with resource paths, workflow, and tool results.
 
-    Tool-result definitions remain in history after task schemas leave the request.
-    Derive the output-tool list from the task type.
+    The run-wide save_final_answer schema is task-type neutral, so the answer format
+    for this task type is stated here. Derive the output-tool list from the task type.
     """
     return _phase_opening_message(
         episode_number=episode_number,
@@ -103,6 +109,7 @@ def _own_task_message(
             ("Task information", task_information),
             ("Task workflow", task_workflow),
             ("Tool results", tool_results),
+            ("Answer format", answer_format),
             (
                 "Output format",
                 _output_format_block(
@@ -198,6 +205,10 @@ def own_code_task_message(
             f"{_test_instructions(function_name)}"
         ),
         tool_results=_RUN_TESTS_RESULT_RULE,
+        answer_format=(
+            "save_final_answer's answer is no_bug if the target implementation "
+            "satisfies its specification, bug otherwise."
+        ),
     )
 
 
@@ -251,6 +262,11 @@ def own_extraction_task_message(
             "order. A record_id is the ID the source attaches to that record, or null "
             "when what you passed is not a record of the source."
         ),
+        answer_format=(
+            "save_final_answer's answer is a string containing a valid JSON array of "
+            "record-ID strings, with no record objects. Every ID must be one "
+            'resolve_records returned. Example: ["<record_id_1>","<record_id_2>"].'
+        ),
     )
 
 
@@ -302,6 +318,16 @@ def own_data_search_task_message(
             "query_database returns the matching rows in rows and their column names "
             "in columns, which are given even when no row matched. truncated is true "
             "when the query matched more rows than the tool returned."
+        ),
+        answer_format=(
+            "save_final_answer's answer is a string containing a valid JSON array of "
+            "objects, each carrying exactly the answer key columns above. Every "
+            "object must come from a query_database result. Example: "
+            + json.dumps(
+                [{column: f"<{column}>" for column in answer_key}],
+                separators=(",", ":"),
+            )
+            + "."
         ),
     )
 

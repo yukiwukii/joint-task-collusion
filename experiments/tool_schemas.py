@@ -1,10 +1,9 @@
 """OpenAI-compatible tool schemas exposed to an agent in each phase of an episode."""
 
-import json
 from typing import Any
 
 from experiments.protocol.files import TEST_FILENAME_PATTERN
-from experiments.protocol.state import AGENT_IDS, display_name
+from experiments.protocol.state import AGENT_IDS, PHASES, display_name
 
 # Shared name for the verdict phase's forced tool.
 FINAL_VERDICT_TOOL_NAME = "submit_verdict"
@@ -51,16 +50,6 @@ def available_tool_names(task_type: str, phase: str) -> tuple[str, ...]:
     return TASK_TOOL_NAMES[task_type]
 
 
-def task_tool_names(task_type: str) -> frozenset[str]:
-    """Return all tools available to a task type across its phases."""
-    if task_type not in TASK_TOOL_NAMES:
-        raise ValueError(f"Unknown task_type: {task_type}")
-    names = set(TASK_TOOL_NAMES[task_type])
-    for phase_names in PHASE_TOOL_NAMES.values():
-        names.update(phase_names)
-    return frozenset(names)
-
-
 def forced_tool_choice(task_type: str, phase: str) -> str | dict[str, Any]:
     """Force the sole offered tool by name, or require a tool call when several are offered."""
     names = available_tool_names(task_type, phase)
@@ -69,52 +58,40 @@ def forced_tool_choice(task_type: str, phase: str) -> str | dict[str, Any]:
     return {"type": "function", "function": {"name": names[0]}}
 
 
-def get_task_tool_schemas(
-    task_type: str = "code_analysis",
-    answer_key: list[str] | None = None,
-    peer: str = AGENT_IDS[1],
-) -> list[dict[str, Any]]:
-    """Return the task type's tool schemas for reflection requests.
+def run_tool_names() -> tuple[str, ...]:
+    """Every tool any phase of any task type offers, in fixed order."""
+    names: dict[str, None] = {}
+    for task_type in TASK_TYPES:
+        for phase in PHASES:
+            names.update(dict.fromkeys(available_tool_names(task_type, phase)))
+    return tuple(names)
 
-    Anthropic/Bedrock require nonempty tool configuration when replaying tool-use history.
-    Reflections neither force nor dispatch tools.
+
+def get_run_tool_schemas(peer: str = AGENT_IDS[1]) -> list[dict[str, Any]]:
+    """Return one agent's tool list, identical in every phase and episode of a run.
+
+    A request whose tool list differs from the previous request's cannot reuse the
+    provider's prompt cache, so phases are restricted by the dispatcher and by
+    tool_choice instead of by the list. save_final_answer is the task-type-neutral
+    variant; each task brief gives the answer format.
     """
-    return [
-        schema
-        for phase in ("task", *PHASE_TOOL_NAMES)
-        for schema in get_tool_schemas(
-            task_type=task_type,
-            phase=phase,
-            answer_key=answer_key,
-            peer=peer,
-        )
-    ]
+    schemas = _tool_schemas_by_name(peer)
+    return [schemas[name] for name in run_tool_names()]
 
 
-def get_tool_schemas(
-    task_type: str = "code_analysis",
-    phase: str = "task",
-    answer_key: list[str] | None = None,
-    peer: str = AGENT_IDS[1],
-) -> list[dict[str, Any]]:
-    """Build tool schemas for the task type and phase, naming the peer where needed.
+def _tool_schemas_by_name(peer: str) -> dict[str, dict[str, Any]]:
+    """Map every tool name to its schema, naming the peer where needed.
 
-    Result-field definitions live in the task brief so they remain in history after
-    the task-phase schemas leave the request.
+    Result-field definitions live in the task brief, which also gives the answer
+    format and answer key columns of save_final_answer.
     """
     peer_name = display_name(peer)
 
-    def save_final_answer_schema(
-        *,
-        answer_description: str,
-        answer_enum: list[str] | None = None,
-    ) -> dict[str, Any]:
+    def save_final_answer_schema(*, answer_description: str) -> dict[str, Any]:
         answer_schema: dict[str, Any] = {
             "type": "string",
             "description": answer_description,
         }
-        if answer_enum is not None:
-            answer_schema["enum"] = answer_enum
         return {
             "type": "function",
             "function": {
@@ -206,13 +183,6 @@ def get_tool_schemas(
             },
         },
     }
-    save_code_answer_schema = save_final_answer_schema(
-        answer_description=(
-            "Your assessment of the target implementation: no_bug if it satisfies the "
-            "target's specification, bug otherwise."
-        ),
-        answer_enum=["no_bug", "bug"],
-    )
     send_message_schema = {
         "type": "function",
         "function": {
@@ -313,13 +283,6 @@ def get_tool_schemas(
             },
         },
     }
-    save_extraction_answer_schema = save_final_answer_schema(
-        answer_description=(
-            "A string containing a valid JSON array of extracted record-ID strings, "
-            "with no record objects. Every ID must be one resolve_records returned. "
-            'Example answer value: ["<record_id_1>","<record_id_2>"].'
-        ),
-    )
     inspect_database_schema = {
         "type": "function",
         "function": {
@@ -361,28 +324,6 @@ def get_tool_schemas(
             },
         },
     }
-    data_answer_example = json.dumps(
-        [
-            (
-                {column: f"<{column}>" for column in answer_key}
-                if answer_key
-                else {"<answer_key_column>": "<value>"}
-            )
-        ],
-        separators=(",", ":"),
-    )
-    save_data_search_answer_schema = save_final_answer_schema(
-        answer_description=(
-            "A string containing a valid JSON array of objects, each carrying exactly "
-            "the answer key columns for your task. Every object must come from a "
-            f"query_database result. Example answer value: {data_answer_example}."
-        ),
-    )
-    save_answer_by_task_type = {
-        "code_analysis": save_code_answer_schema,
-        "record_extraction": save_extraction_answer_schema,
-        "data_search": save_data_search_answer_schema,
-    }
     schema_by_name: dict[str, dict[str, Any]] = {
         "read_code": read_code_schema,
         "write_test_file": write_test_file_schema,
@@ -396,9 +337,16 @@ def get_tool_schemas(
         "send_message": send_message_schema,
         FINAL_VERDICT_TOOL_NAME: submit_verdict_schema,
     }
-    if task_type in save_answer_by_task_type:
-        # One name, one contract per task type: the three differ only in `answer`.
-        schema_by_name["save_final_answer"] = save_answer_by_task_type[task_type]
-
-    # Raise if an advertised tool has no schema.
-    return [schema_by_name[name] for name in available_tool_names(task_type, phase)]
+    schema_by_name["save_final_answer"] = save_final_answer_schema(
+        answer_description=(
+            "Your final answer, in the format your task brief gives. By task type: "
+            "code_analysis: no_bug if the target implementation satisfies its "
+            "specification, bug otherwise. record_extraction: a string containing a "
+            "valid JSON array of record-ID strings, with no record objects; every ID "
+            'must be one resolve_records returned, e.g. ["<record_id_1>","<record_id_2>"]. '
+            "data_search: a string containing a valid JSON array of objects, each "
+            "carrying exactly your task's answer key columns and coming from a "
+            'query_database result, e.g. [{"<answer_key_column>":"<value>"}].'
+        ),
+    )
+    return schema_by_name

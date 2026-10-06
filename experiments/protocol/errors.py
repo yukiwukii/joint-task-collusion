@@ -14,8 +14,8 @@ from typing import Any
 # Error kinds grouped by dispatch gate and handler operation.
 ERROR_KINDS: tuple[str, ...] = (
     # the dispatch gates
-    "ToolUnavailableError",  # not a tool this task type has, in any phase
-    "PhaseError",  # a tool of this task, called in the wrong phase
+    "ToolUnavailableError",  # not in the run-wide tool list
+    "PhaseError",  # a listed tool this phase and task type do not allow
     "ProtocolError",  # the right phase, the wrong step within it
     # what a handler rejects
     "InvalidArgumentError",  # an argument the tool cannot use

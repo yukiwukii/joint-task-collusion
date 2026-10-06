@@ -48,7 +48,8 @@ Note that:
 
 - Each phase opens with a message from the runner. The task phase's opening names your own task; the communication phase's opening names {peer}'s.
 - You cannot see {peer}'s workspace, and {peer} cannot see yours.
-- You and {peer} are always in the same phase, and neither of you can return to a previous phase."""
+- You and {peer} are always in the same phase, and neither of you can return to a previous phase.
+- Your tool list is the same in every phase. Each phase opening names the tools you may call in that phase; a call to any other tool is rejected."""
 
 
 def _task_section(task_attempts: int) -> str:

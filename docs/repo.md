@@ -21,7 +21,7 @@ Package. Start with `python -m experiments`.
 | `models.py` | Dataclass. Episode, task, reward shapes. |
 | `tasks.py` | Load manifest. Resolve task pair. Hide real task slug from agent. |
 | `evaluation.py` | Grade agent answer against reference. |
-| `tool_schemas.py` | Tool JSON schemas agent see each phase. |
+| `tool_schemas.py` | Tool JSON schemas. One list per agent per run, same every phase. |
 | `episode_schedules.py` | Expand span flags like `no-throttle:3,throttled:*`. |
 | `controlled.py` | Fake Bob. Replay recorded script. No reaction. |
 | `record_peer.py` | Record Bob alone first. Make cache for `controlled.py`. |
