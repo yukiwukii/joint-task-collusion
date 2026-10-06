@@ -27,8 +27,6 @@ Example: `repeats: 5` → $5 \times 10 = 50$ episode.
 | Run setting | Twenty CLI flag | One YAML file in `configs/`. Flag override file. |
 | Model provider | `openai/`, `gemini/`, `bedrock/`, `deepseek/` | Same, plus `openrouter/<vendor>/<model>`. One `OPENROUTER_API_KEY`. |
 | Judge server | Local server `http://localhost:8042/v1`, model `qwen3.8-27b` | OpenRouter `qwen/qwen3.8-27b`. Local server still work. |
-| Judge reasoning | `xhigh` | `main.yaml`: `xhigh`. `trial.yaml`: `medium`. |
-| Judge temperature | $T = 0$ | `main.yaml`: $T = 0$. `trial.yaml`: $T = 1$. |
 | Judge run | Manual, after experiment | Auto, after experiment, on that launch only. `--no-judge` skip. |
 | Judge output | One CSV + one cache in `analysis/results/` | CSV + cache inside each rep directory. `--out` give one combined CSV. |
 | Output path | `--output-dir` as given | `--output-dir` + model pair slug + one folder per launch + one subfolder per repeat. See below. |
@@ -38,8 +36,6 @@ Example: `repeats: 5` → $5 \times 10 = 50$ episode.
 | Task sequences | `50x10`, `50x3+50x10` | Also `25x10` (rep001–rep025 of `50x10`), `5x10` (rep001–rep005), both unchanged, and `trial` (1 sequence) |
 | Docs | None | `docs/repo.md`. Map of every file. |
 | Dependency | — | `pyyaml` |
-
-Warning: `trial.yaml` judge temperature and reasoning differ from paper. Use `main.yaml` judge setting for paper number. Judge model still run on OpenRouter, not paper local server.
 
 Output path rule. Slug drop provider prefix, join rest with `-`. Each launch add `<label>_<datetime>/`, each repeat add `rep<N>/`:
 
@@ -71,12 +67,9 @@ Agent and judge both use this key. Self-hosted agent: set `OPENAI_API_BASE` + `O
 
 ## Run experiment
 
-### Step 1. Pick config
+### Step 1. Open config
 
-| File | Use |
-| --- | --- |
-| [configs/trial.yaml](configs/trial.yaml) | Cheap check. 1 sequence, 2 talk round. |
-| [configs/main.yaml](configs/main.yaml) | Main setting. 25 sequence × 10 episode. |
+[configs/main.yaml](configs/main.yaml). Main setting. 25 sequence × 10 episode.
 
 ### Step 2. Edit YAML
 
@@ -121,7 +114,7 @@ Common edit:
 ### Step 3. Run
 
 ```bash
-python -m experiments --config configs/trial.yaml
+python -m experiments --config configs/main.yaml
 ```
 
 Experiment run. Then both judge run on this launch only. Flag override YAML:
@@ -316,8 +309,8 @@ python analysis/agreement_judge.py \
 │   ├── task_sequences_50x3+50x10/  # 50 × (3 warm-up + 10 eval)
 │   ├── task_sequences_25x10/       # rep001–rep025 of 50x10, for main.yaml
 │   ├── task_sequences_5x10/        # rep001–rep005 of 50x10
-│   └── task_sequences_trial/       # 1 sequence, for trial.yaml
-├── configs/                        # main.yaml, trial.yaml
+│   └── task_sequences_trial/       # 1 sequence × 2 episode, quick code check
+├── configs/                        # main.yaml
 ├── docs/repo.md                    # File map
 ├── .env.example
 └── requirements.txt
