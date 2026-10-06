@@ -1,6 +1,6 @@
 # Joint-Task Collusion
 
-Repo copy [SALT-NLP/agent-collusion](https://github.com/SALT-NLP/agent-collusion). Repo add YAML config, OpenRouter, judge auto-run, results viewer.
+Repo copy [SALT-NLP/agent-collusion](https://github.com/SALT-NLP/agent-collusion). Repo add YAML config, OpenRouter, judge auto-run, parallel repeats, results viewer.
 
 Original paper: **Emergent Collusion in Long-Horizon LLM Agent Interaction**. Authors: Xinrui Shi\*, Yanzhe Zhang\*, Diyi Yang (\*equal contribution).
 
@@ -27,24 +27,26 @@ Example: `repeats: 5` → $5 \times 10 = 50$ episode.
 | Run setting | Twenty CLI flag | One YAML file in `configs/`. Flag override file. |
 | Model provider | `openai/`, `gemini/`, `bedrock/`, `deepseek/` | Same, plus `openrouter/<vendor>/<model>`. One `OPENROUTER_API_KEY`. |
 | Judge server | Local server `http://localhost:8042/v1`, model `qwen3.8-27b` | OpenRouter `qwen/qwen3.8-27b`. Local server still work. |
-| Judge reasoning | `xhigh` | `medium` |
-| Judge temperature | $T = 0$ | $T = 1$ |
-| Judge run | Manual, after experiment | Auto, after experiment. `--no-judge` skip. |
-| Judge output | One CSV + one cache in `analysis/results/` | CSV + cache inside each run directory. `--out` give one combined CSV. |
-| Output path | `--output-dir` as given | `--output-dir` + model pair slug. See below. |
-| Results frontend | None | `analysis/results_viewer.py`. Browser app. Standard library only. |
-| Task sequences | `50x10`, `50x3+50x10` | Also `5x10` (rep001–rep005 of `50x10`, unchanged) and `trial` (1 sequence) |
+| Judge reasoning | `xhigh` | `main.yaml`: `xhigh`. `trial.yaml`: `medium`. |
+| Judge temperature | $T = 0$ | `main.yaml`: $T = 0$. `trial.yaml`: $T = 1$. |
+| Judge run | Manual, after experiment | Auto, after experiment, on that launch only. `--no-judge` skip. |
+| Judge output | One CSV + one cache in `analysis/results/` | CSV + cache inside each rep directory. `--out` give one combined CSV. |
+| Output path | `--output-dir` as given | `--output-dir` + model pair slug + one folder per launch + one subfolder per repeat. See below. |
+| Repeats | One after another | `--parallel N` run N repeat at once. |
+| Tool list | Change each phase and task type | Same list every phase. Prompt cache hit every phase. Dispatcher reject tool outside phase. |
+| Results frontend | None | `analysis/results_viewer.py`. Browser app. Standard library only. EC, TC, CC per run. |
+| Task sequences | `50x10`, `50x3+50x10` | Also `25x10` (rep001–rep025 of `50x10`), `5x10` (rep001–rep005), both unchanged, and `trial` (1 sequence) |
 | Docs | None | `docs/repo.md`. Map of every file. |
 | Dependency | — | `pyyaml` |
 
-Warning: judge temperature and reasoning differ from paper. Number no match paper exact. For paper setting, pass `--temperature 0 --reasoning-effort xhigh`, or point judge at local server.
+Warning: `trial.yaml` judge temperature and reasoning differ from paper. Use `main.yaml` judge setting for paper number. Judge model still run on OpenRouter, not paper local server.
 
-Output path rule. Slug drop provider prefix, join rest with `-`:
+Output path rule. Slug drop provider prefix, join rest with `-`. Each launch add `<label>_<datetime>/`, each repeat add `rep<N>/`:
 
 | Alice | Bob | Folder |
 | --- | --- | --- |
-| `openrouter/qwen/qwen3-32b` | `openrouter/qwen/qwen3-32b` | `results/qwen-qwen3-32b/` |
-| `openrouter/openai/gpt-6-luna` | `openrouter/qwen/qwen3-32b` | `results/openai-gpt-6-luna__qwen-qwen3-32b/` |
+| `openrouter/qwen/qwen3-32b` | `openrouter/qwen/qwen3-32b` | `results/qwen-qwen3-32b/<label>_<datetime>/rep<N>/` |
+| `openrouter/openai/gpt-6-luna` | `openrouter/qwen/qwen3-32b` | `results/openai-gpt-6-luna__qwen-qwen3-32b/<label>_<datetime>/rep<N>/` |
 
 ## Install
 
@@ -74,7 +76,7 @@ Agent and judge both use this key. Self-hosted agent: set `OPENAI_API_BASE` + `O
 | File | Use |
 | --- | --- |
 | [configs/trial.yaml](configs/trial.yaml) | Cheap check. 1 sequence, 2 talk round. |
-| [configs/main.yaml](configs/main.yaml) | Main setting. 5 sequence × 10 episode. |
+| [configs/main.yaml](configs/main.yaml) | Main setting. 25 sequence × 10 episode. |
 
 ### Step 2. Edit YAML
 
@@ -90,15 +92,16 @@ bob:                                      # --bob-* flags
   reasoning_effort: high
 
 run:                                      # flags of python -m experiments
-  task_sequence_record: [task/task_sequences_5x10]
-  repeats: 5
+  task_sequence_record: [task/task_sequences_25x10]
+  repeats: 25
+  parallel: 1                             # repeats run at once
   output_dir: results
 
 judge:                                    # both judges
   base_url: https://openrouter.ai/api/v1
   model: qwen/qwen3.8-27b
-  reasoning_effort: medium
-  temperature: 1.0
+  reasoning_effort: xhigh
+  temperature: 0.0
   workers: 8
   verdict_policy: raw-only
 ```
@@ -111,6 +114,7 @@ Common edit:
 | Cross-model pair | Give Alice and Bob different `model` |
 | All 50 sequence | `task_sequence_record: [task/task_sequences_50x10]`, `repeats: 50` |
 | Start at sequence 3 | `start_index: 3` |
+| Faster run | `parallel: 5`. 25 repeat take about 1h10m, not 6h10m. Cost same. |
 | Fewer talk round | `max_rounds: 2` |
 | Ablation | Add row from ablation table below. Example: `no_reward: true` |
 
@@ -125,6 +129,17 @@ Experiment run. Then both judge run on this launch only. Flag override YAML:
 ```bash
 python -m experiments --config configs/main.yaml --repeats 1
 python -m experiments --config configs/main.yaml --no-judge
+python -m experiments --config configs/main.yaml --parallel 5
+```
+
+`parallel` above 1: each repeat write console output to `results/<pair>/<run>/logs/rep<N>.log`. Terminal show only start and end of each repeat. Failed repeat no stop others. Judge still run. Command exit with error, name failed repeat.
+
+`parallel: N` send about N× more request per minute. Watch OpenRouter rate limit.
+
+Quick code check, 2 episode, main setting:
+
+```bash
+python -m experiments --config configs/main.yaml --repeats 1 --task-sequence-record task/task_sequences_trial
 ```
 
 Judge by hand later:
@@ -144,7 +159,11 @@ results/<pair>/<run>/rep<N>/agreement.csv           one row per episode
 results/<pair>/<run>/rep<N>/relaxation.csv          one row per episode per agent
 results/<pair>/<run>/rep<N>/agreement_cache.jsonl   agreement judge reply
 results/<pair>/<run>/rep<N>/relaxation_cache.jsonl  relaxation judge reply
+results/<pair>/<run>/rep<N>/llm_usage.jsonl         one row per LLM call, with cost_usd
+results/<pair>/<run>/logs/rep<N>.log                console output, only with parallel above 1
 ```
+
+`<run>` = `<label>_<datetime>`. One per launch.
 
 ## Run results viewer
 
@@ -295,6 +314,7 @@ python analysis/agreement_judge.py \
 │   ├── code-analysis/, text-extraction/, data-search/
 │   ├── task_sequences_50x10/       # 50 sequence × 10 episode
 │   ├── task_sequences_50x3+50x10/  # 50 × (3 warm-up + 10 eval)
+│   ├── task_sequences_25x10/       # rep001–rep025 of 50x10, for main.yaml
 │   ├── task_sequences_5x10/        # rep001–rep005 of 50x10
 │   └── task_sequences_trial/       # 1 sequence, for trial.yaml
 ├── configs/                        # main.yaml, trial.yaml
