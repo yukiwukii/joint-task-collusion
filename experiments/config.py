@@ -11,7 +11,7 @@ from typing import Any
 
 import yaml
 
-SECTIONS = ("alice", "bob", "run", "judge")
+SECTIONS = ("alice", "bob", "run", "judge", "tools")
 
 
 def config_defaults(path: Path, load: dict[str, str]) -> dict[str, Any]:

@@ -60,6 +60,7 @@ from experiments.protocol import (
     COMMUNICATION_ATTEMPTS,
     TASK_ATTEMPTS,
     VERDICT_ATTEMPTS,
+    WORKSPACE_FREE_TURNS,
 )
 from experiments.protocol.rewards import episode_rewards
 from experiments.protocol.state import (
@@ -81,7 +82,15 @@ from experiments.tasks import (
     sanitize_label,
     validate_task_pair,
 )
-from experiments.tool_schemas import FINAL_VERDICT_TOOL_NAME, forced_tool_choice
+from experiments.tool_schemas import (
+    COMMUNICATION_TOOL_NAMES,
+    FINAL_VERDICT_TOOL_NAME,
+    WORKSPACE_LOG_TOOL_NAME,
+    ToolSet,
+    available_tool_names,
+    forced_tool_choice,
+    tool_set_of,
+)
 from experiments.usage import make_llm_usage_recorder
 
 TEMP_TASK_PREFIX_MAX_LENGTH = 80
@@ -128,7 +137,10 @@ def _phase_completed(turn_result: dict[str, Any], phase: str) -> bool:
             if call["tool_name"] == "get_log" and result.get("success") is True:
                 return True
         elif phase == "communication":
-            if call["tool_name"] == "send_message" and result.get("success") is True:
+            if (
+                call["tool_name"] in COMMUNICATION_TOOL_NAMES
+                and result.get("success") is True
+            ):
                 return True
         elif phase == "verdict":
             # Use the schema name to recognize a successful verdict submission.
@@ -142,10 +154,32 @@ def _phase_completed(turn_result: dict[str, Any], phase: str) -> bool:
     return False
 
 
-def _spent_an_attempt(turn_result: dict[str, Any], phase: str) -> bool:
-    """Count every model turn as an attempt, including missing or rejected tool calls."""
+def _spent_an_attempt(
+    turn_result: dict[str, Any],
+    phase: str,
+    tools: ToolSet | None = None,
+) -> bool:
+    """Count every model turn as an attempt, including missing or rejected tool calls.
+
+    A turn that called only workspace_log is free, up to WORKSPACE_FREE_TURNS per slot,
+    but only where the run offers workspace_log in this phase, and never in the verdict
+    phase, which keeps its fixed budget. With workspace_log off, every turn counts.
+    """
     if phase not in _PHASE_BUDGETS:
         raise ValueError(f"Unknown phase: {phase}")
+    workspace_offered = (
+        tools is not None
+        and WORKSPACE_LOG_TOOL_NAME in tools.enabled
+        and phase in tools.workspace_log_phases
+    )
+    calls = turn_result["tool_calls"]
+    if (
+        workspace_offered
+        and phase != "verdict"
+        and calls
+        and all(call["tool_name"] == WORKSPACE_LOG_TOOL_NAME for call in calls)
+    ):
+        return False
     return True
 
 
@@ -374,7 +408,9 @@ def _prepare_agent_task(
     task_id = str(task["task_id"])
     display_id = display_task_id(task)
     slot["display_id"] = display_id
-    verdict_prompt = verdict_phase_message(episode_number=episode_number, peer=agent_id)
+    verdict_prompt = verdict_phase_message(
+        episode_number=episode_number, peer=agent_id, tools=config.tools
+    )
 
     if is_code_task_type(task_type):
         code_path = task_file_path(task, "code_path", repo_root)
@@ -402,6 +438,7 @@ def _prepare_agent_task(
                 display_id=display_id,
                 code_path=str(code_path.relative_to(repo_root)),
                 function_name=function_name,
+                tools=config.tools,
             ),
             judging_prompt=judging_code_task_message(
                 peer=agent_id,
@@ -409,6 +446,7 @@ def _prepare_agent_task(
                 display_id=display_id,
                 function_name=function_name,
                 verdict_policy=config.verdict_policy,
+                tools=config.tools,
             ),
             verdict_prompt=verdict_prompt,
         )
@@ -426,6 +464,7 @@ def _prepare_agent_task(
                 display_id=display_id,
                 source_path=str(source_path.relative_to(repo_root)),
                 extraction_instruction=instruction,
+                tools=config.tools,
             ),
             judging_prompt=judging_extraction_task_message(
                 peer=agent_id,
@@ -433,6 +472,7 @@ def _prepare_agent_task(
                 display_id=display_id,
                 extraction_instruction=instruction,
                 verdict_policy=config.verdict_policy,
+                tools=config.tools,
             ),
             verdict_prompt=verdict_prompt,
         )
@@ -453,6 +493,7 @@ def _prepare_agent_task(
                 database_path=str(database_path.relative_to(repo_root)),
                 search_prompt=search_prompt,
                 answer_key=answer_key,
+                tools=config.tools,
             ),
             judging_prompt=judging_data_search_task_message(
                 peer=agent_id,
@@ -461,6 +502,7 @@ def _prepare_agent_task(
                 search_prompt=search_prompt,
                 answer_key=answer_key,
                 verdict_policy=config.verdict_policy,
+                tools=config.tools,
             ),
             verdict_prompt=verdict_prompt,
         )
@@ -487,6 +529,8 @@ def _prepare_pair(
         {
             "repo_root": str(repo_root),
             "task_type": task_type,
+            "tools": config.tools,
+            "workspace_log_path": config.workspace_log_path,
         }
     )
     prepared = PreparedPair(task_type=task_type, state=state)
@@ -539,6 +583,7 @@ def _run_agent_attempts(
     agent_id = runtime.agent_id
     attempts_left = _PHASE_BUDGETS[phase]
     attempt_index = 0
+    free_turns = 0
     while attempts_left > 0:
         reset_message_delivery(state, agent_id)
         log_progress(
@@ -574,8 +619,13 @@ def _run_agent_attempts(
         attempt_index += 1
         if _phase_completed(turn, phase):
             return True
-        if _spent_an_attempt(turn, phase):
+        if (
+            _spent_an_attempt(turn, phase, tool_set_of(state))
+            or free_turns >= WORKSPACE_FREE_TURNS
+        ):
             attempts_left -= 1
+        else:
+            free_turns += 1
     return False
 
 
@@ -649,7 +699,12 @@ def _run_communication_phase(
     }
     _open_communication_phase(prepared=prepared, runtimes=active_runtimes)
     # Force the communication phase's single tool by name.
-    tool_choice = forced_tool_choice(prepared.task_type, "communication")
+    tool_choice = forced_tool_choice(prepared.task_type, "communication", config.tools)
+    send_tool_names = tuple(
+        name
+        for name in available_tool_names(prepared.task_type, "communication", config.tools)
+        if name in COMMUNICATION_TOOL_NAMES
+    )
     for round_index in range(config.max_rounds):
         state["round"] = round_index
         log_progress(
@@ -685,7 +740,7 @@ def _run_communication_phase(
                 {
                     "role": "user",
                     "content": communication_round_instruction(
-                        round_index + 1, config.max_rounds
+                        round_index + 1, config.max_rounds, send_tool_names
                     ),
                 }
             )
@@ -785,7 +840,7 @@ def _run_verdict_phase(
         if not (actor == "bob" and config.controlled_bob_verdict)
     }
     _open_verdict_phase(prepared=prepared, runtimes=active_runtimes)
-    tool_choice = forced_tool_choice(prepared.task_type, "verdict")
+    tool_choice = forced_tool_choice(prepared.task_type, "verdict", config.tools)
     for agent_id in AGENT_IDS:
         runtime = runtimes[agent_id]
         if agent_id == "bob" and config.controlled_bob_verdict:

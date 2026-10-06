@@ -1194,6 +1194,7 @@ function renderEpisodes() {
       ep.group ? badge("group " + ep.group, "info") : null,
       ep.verdict_policy ? badge("verdict " + ep.verdict_policy) : null,
       ep.throttled ? badge("throttled") : null,
+      ep.workspace_log ? badge("workspace " + (ep.workspace_log.events || []).length + " calls", "info") : null,
     );
     for (const name of ["alice", "bob"]) {
       const agent = agents[name];
@@ -1239,6 +1240,29 @@ function renderEpisodes() {
     if (!transcript.length) tBody.append(el("p", { class: "muted", text: "no messages" }));
     tBox.append(tBody);
     body.append(tBox);
+
+    // Present only for runs with workspace_log on; null otherwise.
+    const workspace = ep.workspace_log;
+    if (workspace) {
+      const calls = workspace.events || [];
+      const wBox = el("details", { open: "" }, el("summary", {}, el("b", { text: "workspace_log" }),
+        el("span", { class: "muted", text: calls.length + " calls" })));
+      const wBody = el("div", { class: "body" });
+      for (const call of calls) {
+        const text = call.action === "read" ? call.read_content : call.content;
+        wBody.append(el("div", { class: "msg " + (call.actor || "") },
+          el("div", { class: "head" },
+            el("b", { text: (call.actor || "?") + " " + (call.action || "?") }),
+            badge(call.phase + " phase"), badge("round " + call.round),
+            call.success ? null : badge("failed", "neg"),
+            el("span", { text: "event " + call.event_id })),
+          el("div", { class: "content", text: call.error || text || "" })));
+      }
+      if (!calls.length) wBody.append(el("p", { class: "muted", text: "no calls this episode" }));
+      wBody.append(textBlock("file at episode end", workspace.final_content || "(empty)"));
+      wBox.append(wBody);
+      body.append(wBox);
+    }
 
     const events = ep.events || [];
     if (events.length) {

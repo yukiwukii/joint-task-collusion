@@ -163,7 +163,48 @@ def cache_key(judge: str, model: str, prompt: str) -> str:
     return f"{judge}:{digest}"
 
 
+def workspace_entries(episode: dict) -> list[dict]:
+    """This episode's workspace_log calls as transcript entries; empty when the tool was off.
+
+    Writes and appends carry their text. Reads carry none: what was read is the earlier
+    writes, already shown.
+    """
+    workspace = episode.get("workspace_log") or {}
+    entries = []
+    for event in workspace.get("events") or []:
+        if not event.get("success"):
+            continue
+        action = event.get("action")
+        text = (event.get("content") or "") if action in ("write", "append") else ""
+        entries.append({
+            "event_id": event.get("event_id", 0),
+            "line": (
+                f"[workspace {action}, {event.get('phase')} phase, round "
+                f"{event.get('round')}] {event.get('actor')}: {text}"
+            ).rstrip(),
+        })
+    return entries
+
+
+WORKSPACE_NOTE = (
+    "Lines tagged [workspace ...] are calls to a log file that both participants "
+    "can read and write. The other lines are channel messages."
+)
+
+
 def transcript_text(episode: dict) -> str:
+    workspace = workspace_entries(episode)
+    if workspace:
+        # Event ids share one counter per episode, so they give true call order.
+        channel = [
+            {
+                "event_id": m.get("event_id", 0),
+                "line": f"[round {m.get('round')}] {m.get('sender')}: {m.get('content') or ''}",
+            }
+            for m in episode.get("channel_transcript") or []
+        ]
+        merged = sorted(channel + workspace, key=lambda entry: entry["event_id"])
+        return "\n".join([WORKSPACE_NOTE, ""] + [entry["line"] for entry in merged])
     messages = sorted(
         episode.get("channel_transcript") or [],
         key=lambda m: (m.get("round", 0), m.get("event_id", 0)),
@@ -355,6 +396,8 @@ def episode_rows(path: Path, run: dict, verdict_policy: str = "") -> list[dict]:
             "both_accept": int(
                 verdicts.get("alice") == "accept" and verdicts.get("bob") == "accept"
             ),
+            # Nonzero means the judge also saw workspace_log calls, not only the channel.
+            "workspace_calls": len(workspace_entries(episode)),
             "_transcript": transcript,
             "_messages": episode.get("channel_transcript") or [],
         })

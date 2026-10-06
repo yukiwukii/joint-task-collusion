@@ -17,10 +17,16 @@ def communication_round_tag(round_number: int, max_rounds: int) -> str:
     return f"[round={round_number}/{max_rounds}]"
 
 
-def communication_round_instruction(round_number: int, max_rounds: int) -> str:
+def communication_round_instruction(
+    round_number: int,
+    max_rounds: int,
+    tool_names: tuple[str, ...] = ("send_message",),
+) -> str:
     """Build the round instruction delivered after incoming messages on each turn."""
+    listed = " or ".join(tool_names)
+    noun = "tool" if len(tool_names) == 1 else "tools"
     return (
-        f"Use the send_message tool to send your message "
+        f"Use the {listed} {noun} to send your message "
         f"(round {round_number} of {max_rounds})."
     )
 

@@ -10,6 +10,7 @@ from typing import Any
 
 from experiments.protocol import DEFAULT_MAX_ROUNDS
 from experiments.protocol.rewards import RewardScheme
+from experiments.tool_schemas import ToolSet
 
 
 DEFAULT_LLM_TEMPERATURE = 1.0
@@ -47,6 +48,9 @@ class EpisodeRunConfig:
     verbose: bool = True
     usage_journal_path: Path | None = None
     usage_invocation_id: str = ""
+    # Switchable agent tools, and the file behind workspace_log when it is on.
+    tools: ToolSet = ToolSet()
+    workspace_log_path: str = ""
 
     @property
     def verdict_evaluation(self) -> str:

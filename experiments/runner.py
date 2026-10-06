@@ -45,14 +45,22 @@ from experiments.protocol.rewards import (
     RewardScheme,
     reward_scheme_from_args,
 )
-from experiments.protocol.state import AGENT_IDS
+from experiments.protocol.state import AGENT_IDS, PHASES
 from experiments.tasks import (
     DEFAULT_TASK_SEQUENCES,
     display_task_id,
     read_task_pairs,
     sanitize_label,
 )
+from experiments.tool_schemas import (
+    COMMUNICATION_TOOL_NAMES,
+    WORKSPACE_LOG_TOOL_NAME,
+    tool_set_from_args,
+)
 from experiments.usage import LLM_USAGE_JOURNAL_FILENAME
+
+# The one file behind workspace_log, inside each run directory.
+WORKSPACE_LOG_RELATIVE_PATH = Path("workspace") / "log.txt"
 
 MAX_ROUNDS_HELP = (
     "Communication rounds per episode, exactly: the phase runs all of them with no "
@@ -213,6 +221,49 @@ def add_feedback_arguments(parser: argparse.ArgumentParser) -> None:
     add_verdict_review_arguments(group)
 
 
+def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
+    """On/off switches for the agent tools that are not fixed by the protocol."""
+    group = parser.add_argument_group("tools")
+    group.add_argument(
+        "--tool-send-message", action=argparse.BooleanOptionalAction, default=True,
+        help="Free-text message to the peer in the communication phase (default: on).",
+    )
+    group.add_argument(
+        "--tool-send-message-strict", action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Message accepted only if it is a verbatim substring of the sender's raw "
+            "log, at most --char-limit chars (default: off)."
+        ),
+    )
+    group.add_argument(
+        "--tool-workspace-log", action=argparse.BooleanOptionalAction, default=False,
+        help=(
+            "One file both agents can read and write, described to them as a "
+            "logging tool only (default: off)."
+        ),
+    )
+    group.add_argument(
+        "--tool-workspace-log-phases",
+        nargs="+",
+        choices=PHASES,
+        default=list(PHASES),
+        metavar="PHASE",
+        help=f"Phases that offer workspace_log. Default: {' '.join(PHASES)}.",
+    )
+
+
+def _validate_tool_settings(args: argparse.Namespace) -> None:
+    tools = tool_set_from_args(args)
+    if not any(name in tools.enabled for name in COMMUNICATION_TOOL_NAMES):
+        raise ValueError(
+            "Enable --tool-send-message or --tool-send-message-strict: the "
+            "communication phase needs a send tool."
+        )
+    if WORKSPACE_LOG_TOOL_NAME in tools.enabled and not tools.workspace_log_phases:
+        raise ValueError("--tool-workspace-log-phases needs at least one phase.")
+
+
 def _resolve_feedback_settings(args: argparse.Namespace) -> None:
     """Resolve reward defaults and validate dependent feedback settings."""
     if not args.reward and (args.reward_scope is not None or args.reward_type is not None):
@@ -275,6 +326,8 @@ def build_run_parser() -> argparse.ArgumentParser:
     add_feedback_arguments(parser)
 
     add_reward_scheme_arguments(parser)
+
+    add_tool_arguments(parser)
 
     output_group = parser.add_argument_group("output")
     output_group.add_argument("--run-label", default="")
@@ -350,6 +403,7 @@ def validate_run_args(args: argparse.Namespace) -> None:
     elif not args.manifest:
         args.manifest = f"{DEFAULT_TASK_SEQUENCES}/rep001_sampled_manifest.json"
     _validate_rounds(args)
+    _validate_tool_settings(args)
     _resolve_model_settings(args)
     for agent_id in AGENT_IDS:
         if getattr(args, f"{agent_id}_cross_episode_memory_length") < -1:
@@ -497,6 +551,7 @@ def _resume_state(
         "reflection": args.reflection,
         "reward": args.reward,
         "reward_scheme": f"{reward_scheme.sharing}-{reward_scheme.terms}",
+        "tools": tool_set_from_args(args).to_record(),
     }
     for key in (
         "controlled_bob_task_model",
@@ -584,6 +639,15 @@ def _run_selected_episodes(
         args.bob_max_output_tokens = recorded["max_output_tokens"]
     # Resolve one reward scheme for both scoring and prompt construction.
     reward_scheme = reward_scheme_from_args(args)
+    tools = tool_set_from_args(args)
+    workspace_log_path = ""
+    if WORKSPACE_LOG_TOOL_NAME in tools.enabled:
+        # Start empty; the file persists across this run's episodes.
+        workspace_file = output_path.parent / WORKSPACE_LOG_RELATIVE_PATH
+        workspace_file.parent.mkdir(parents=True, exist_ok=True)
+        if not workspace_file.exists():
+            workspace_file.write_text("", encoding="utf-8")
+        workspace_log_path = str(workspace_file)
     # Build one system prompt per agent; enable the reward objective with reward feedback.
     base_agent_messages = {
         agent_id: initial_agent_messages(
@@ -594,6 +658,7 @@ def _run_selected_episodes(
             reward_objective=args.reward
             and not (agent_id == "bob" and args.bob_model == "controlled"),
             reward_scheme=reward_scheme,
+            tools=tools,
         )
         for agent_id in AGENT_IDS
     }
@@ -707,6 +772,8 @@ def _run_selected_episodes(
                 verbose=verbose,
                 usage_journal_path=usage_journal_path,
                 usage_invocation_id=usage_invocation_id,
+                tools=tools,
+                workspace_log_path=workspace_log_path,
             ),
             agent_messages=agent_messages,
         )

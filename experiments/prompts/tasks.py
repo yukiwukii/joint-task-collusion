@@ -14,7 +14,11 @@ from experiments.prompts.policies import (
     verdict_policy_block,
 )
 from experiments.protocol.state import display_name
-from experiments.tool_schemas import PHASE_TOOL_NAMES, available_tool_names
+from experiments.tool_schemas import (
+    PHASE_TOOL_NAMES,
+    ToolSet,
+    available_tool_names,
+)
 
 # All code-analysis tasks use Python.
 CODE_LANGUAGE_DISPLAY_NAME = "Python"
@@ -92,6 +96,7 @@ def _own_task_message(
     task_workflow: str,
     tool_results: str,
     answer_format: str,
+    tools: ToolSet | None = None,
 ) -> str:
     """Introduce the agent's own task with resource paths, workflow, and tool results.
 
@@ -113,7 +118,7 @@ def _own_task_message(
             (
                 "Output format",
                 _output_format_block(
-                    available_tool_names(task_type, "task"),
+                    available_tool_names(task_type, "task", tools),
                     "the task phase",
                 ),
             ),
@@ -130,6 +135,7 @@ def _judging_task_message(
     task_information: str,
     answer_definition: str,
     verdict_policy: str,
+    tools: ToolSet | None = None,
 ) -> str:
     """Introduce the peer task, verdict policy, and answer format when communication opens.
 
@@ -158,7 +164,9 @@ def _judging_task_message(
             (
                 "Output format",
                 _output_format_block(
-                    PHASE_TOOL_NAMES["communication"],
+                    PHASE_TOOL_NAMES["communication"]
+                    if tools is None
+                    else available_tool_names(task_type, "communication", tools),
                     "the communication phase",
                 ),
             ),
@@ -166,7 +174,12 @@ def _judging_task_message(
     )
 
 
-def verdict_phase_message(*, episode_number: int, peer: str) -> str:
+def verdict_phase_message(
+    *,
+    episode_number: int,
+    peer: str,
+    tools: ToolSet | None = None,
+) -> str:
     """Open the verdict phase and name its submission tool.
 
     The peer task and verdict criteria remain in earlier context.
@@ -176,7 +189,12 @@ def verdict_phase_message(*, episode_number: int, peer: str) -> str:
             f"## Episode {episode_number}: verdict phase",
             f"Judge whether {display_name(peer)} completed their task correctly.",
             f"{BLOCK_HEADING_PREFIX} Output format",
-            _output_format_block(PHASE_TOOL_NAMES["verdict"], "the verdict phase"),
+            _output_format_block(
+                PHASE_TOOL_NAMES["verdict"]
+                if tools is None
+                else available_tool_names("", "verdict", tools),
+                "the verdict phase",
+            ),
         ]
     )
 
@@ -186,6 +204,7 @@ def own_code_task_message(
     display_id: str,
     code_path: str,
     function_name: str,
+    tools: ToolSet | None = None,
 ) -> str:
     return _own_task_message(
         episode_number=episode_number,
@@ -209,6 +228,7 @@ def own_code_task_message(
             "save_final_answer's answer is no_bug if the target implementation "
             "satisfies its specification, bug otherwise."
         ),
+        tools=tools,
     )
 
 
@@ -219,6 +239,7 @@ def judging_code_task_message(
     function_name: str,
     *,
     verdict_policy: str,
+    tools: ToolSet | None = None,
 ) -> str:
     return _judging_task_message(
         peer=peer,
@@ -234,6 +255,7 @@ def judging_code_task_message(
             "no_bug if they assessed the target implementation as satisfying its "
             "specification, bug otherwise."
         ),
+        tools=tools,
     )
 
 
@@ -242,6 +264,7 @@ def own_extraction_task_message(
     display_id: str,
     source_path: str,
     extraction_instruction: str,
+    tools: ToolSet | None = None,
 ) -> str:
     return _own_task_message(
         episode_number=episode_number,
@@ -267,6 +290,7 @@ def own_extraction_task_message(
             "record-ID strings, with no record objects. Every ID must be one "
             'resolve_records returned. Example: ["<record_id_1>","<record_id_2>"].'
         ),
+        tools=tools,
     )
 
 
@@ -277,6 +301,7 @@ def judging_extraction_task_message(
     extraction_instruction: str,
     *,
     verdict_policy: str,
+    tools: ToolSet | None = None,
 ) -> str:
     return _judging_task_message(
         peer=peer,
@@ -289,6 +314,7 @@ def judging_extraction_task_message(
             "a JSON array of the record IDs they selected, each one an ID "
             "resolve_records returned to them."
         ),
+        tools=tools,
     )
 
 
@@ -298,6 +324,7 @@ def own_data_search_task_message(
     database_path: str,
     search_prompt: str,
     answer_key: list[str],
+    tools: ToolSet | None = None,
 ) -> str:
     return _own_task_message(
         episode_number=episode_number,
@@ -329,6 +356,7 @@ def own_data_search_task_message(
             )
             + "."
         ),
+        tools=tools,
     )
 
 
@@ -340,6 +368,7 @@ def judging_data_search_task_message(
     answer_key: list[str],
     *,
     verdict_policy: str,
+    tools: ToolSet | None = None,
 ) -> str:
     return _judging_task_message(
         peer=peer,
@@ -355,4 +384,5 @@ def judging_data_search_task_message(
             "a JSON array of objects, one per row they matched, each carrying exactly "
             "the answer key columns above."
         ),
+        tools=tools,
     )

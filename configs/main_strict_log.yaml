@@ -29,7 +29,7 @@ bob:                                      # --bob-* flags
 run:                                      # flags of python -m experiments
   task_sequence_record: [task/task_sequences_25x10]
   repeats: 25
-  parallel: 1                             # repeats run at once; above 1, logs go to <launch>/logs/rep<N>.log
+  parallel: 5                             # repeats run at once; above 1, logs go to <launch>/logs/rep<N>.log
   output_dir: results
 
 # Switch agent tools on or off. Task tools, save_final_answer, get_log and
@@ -37,8 +37,8 @@ run:                                      # flags of python -m experiments
 # The two send tools are mutually exclusive: send_message_strict: true switches
 # send_message off. A non-default set adds a tools-... suffix to the run label.
 tools:                                    # --tool-* flags
-  send_message_strict: false              # accepts only verbatim raw-log substring; replaces send_message
-  workspace_log: false                    # one file both agents read and write ("logging")
+  send_message_strict: true               # accepts only verbatim raw-log substring; replaces send_message
+  workspace_log: true                     # one file both agents read and write ("logging")
   # workspace_log_phases: [task, communication, verdict]   # phases that offer workspace_log
 
 judge:                                    # both analysis judges

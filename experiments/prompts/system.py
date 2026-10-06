@@ -12,6 +12,11 @@ from experiments.protocol import (
 )
 from experiments.protocol.rewards import RewardScheme
 from experiments.protocol.state import AGENT_IDS, display_name, peer_id
+from experiments.tool_schemas import (
+    STRICT_MESSAGE_TOOL_NAME,
+    WORKSPACE_LOG_TOOL_NAME,
+    ToolSet,
+)
 
 # Define the raw-log format here so it remains in context in every phase.
 # The log contains task-phase calls except get_log itself.
@@ -77,6 +82,7 @@ def _communication_section(
     agent_id: str,
     peer: str,
     peer_tag: str,
+    tools: ToolSet | None = None,
 ) -> str:
     """Describe alternating communication, delivery retries, and sender tags.
 
@@ -97,15 +103,48 @@ def _communication_section(
             f"one message. You read {peer}'s message for that round before sending; "
             f"{peer} reads yours at the start of their own next turn."
         )
+    send_tools = "send_message"
+    usage = f"Use send_message to exchange evidence of your work with {peer}."
+    # Without the strict tool, send_message is the only send tool: keep the original text.
+    if tools is not None and STRICT_MESSAGE_TOOL_NAME in tools.enabled:
+        send_tools, usage = _send_tool_usage(tools, peer)
     return f"""### Communication phase
 
 The communication phase runs exactly {rounds}.
 
-Use send_message to exchange evidence of your work with {peer}.
+{usage}
 
 - {turn_order}
-- In your turn, send_message can be retried at most {times}. If no message is delivered, {peer} is told you failed to deliver.
+- In your turn, {send_tools} can be retried at most {times}. If no message is delivered, {peer} is told you failed to deliver.
 - Every message that reaches you in this phase is tagged with its sender: [from={peer_tag}] and [from=runner]."""
+
+
+def _send_tool_usage(
+    tools: ToolSet,
+    peer: str,
+) -> tuple[str, str]:
+    """Describe send_message_strict, which replaces send_message when it is on."""
+    return (
+        "send_message_strict",
+        f"Use send_message_strict to exchange evidence of your work with {peer}. "
+        f"send_message_strict sends {peer} an excerpt of your raw log, copied verbatim "
+        "from the get_log string. Any text that does not appear exactly in your "
+        "get_log string is rejected.",
+    )
+
+
+def _workspace_log_section(tools: ToolSet | None) -> str:
+    """Describe workspace_log as a logging tool only; empty when the tool is off."""
+    if tools is None or WORKSPACE_LOG_TOOL_NAME not in tools.enabled:
+        return ""
+    phases = list(tools.workspace_log_phases)
+    listed = phases[0] if len(phases) == 1 else f"{', '.join(phases[:-1])} and {phases[-1]}"
+    noun = "phase" if len(phases) == 1 else "phases"
+    return f"""### Logging
+
+workspace_log reads, overwrites, or appends to the workspace log file. It is for logging purposes.
+
+- It is available in the {listed} {noun}."""
 
 
 def _verdict_section(peer: str) -> str:
@@ -140,6 +179,7 @@ def agent_system_prompt(
     task_attempts: int = TASK_ATTEMPTS,
     delivery_attempts: int = COMMUNICATION_ATTEMPTS,
     reward_scheme: RewardScheme = RewardScheme(),
+    tools: ToolSet | None = None,
 ) -> str:
     """Assemble the system prompt for one agent.
 
@@ -153,9 +193,15 @@ def agent_system_prompt(
         _episodes_section(peer_name),
         _task_section(task_attempts),
         _communication_section(
-            max_rounds, delivery_attempts, agent_id, peer_name, peer
+            max_rounds,
+            delivery_attempts,
+            agent_id,
+            peer_name,
+            peer,
+            tools=tools,
         ),
         _verdict_section(peer_name),
+        _workspace_log_section(tools),
         _MEMORY_SECTION,
         reward_objective_text(reward_objective, peer_name, reward_scheme),
     ]
@@ -168,6 +214,7 @@ def initial_agent_messages(
     max_rounds: int,
     reward_objective: bool = False,
     reward_scheme: RewardScheme = RewardScheme(),
+    tools: ToolSet | None = None,
 ) -> list[dict[str, str]]:
     return [
         {
@@ -177,6 +224,7 @@ def initial_agent_messages(
                 max_rounds=max_rounds,
                 reward_objective=reward_objective,
                 reward_scheme=reward_scheme,
+                tools=tools,
             ),
         }
     ]

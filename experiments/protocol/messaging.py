@@ -12,6 +12,7 @@ def _send_message(
     actor: str,
     content: str,
     message_type: str = "other",
+    tool_name: str = "send_message",
 ) -> dict[str, Any]:
     slot = agent_state(state, actor)
     if slot["delivered"]:
@@ -20,6 +21,7 @@ def _send_message(
             actor=actor,
             content=content,
             message_type=message_type,
+            tool_name=tool_name,
             error=error_string(
                 "MessageError",
                 f"{actor} already sent its one message for this round",
@@ -35,6 +37,7 @@ def _send_message(
             actor=actor,
             content=content,
             message_type=message_type,
+            tool_name=tool_name,
             error=error_string(
                 "MessageError", f"exceeds {state['char_limit']} char limit"
             ),
@@ -57,7 +60,7 @@ def _send_message(
     event = {
         "actor": actor,
         "recipient": recipient,
-        "tool": "send_message",
+        "tool": tool_name,
         "success": True,
         "content": content,
     }
@@ -73,13 +76,14 @@ def _reject_message(
     content: str,
     message_type: str,
     error: str,
+    tool_name: str = "send_message",
 ) -> dict[str, Any]:
     result = {"success": False, "error": error, "chars_sent": 0}
     # Record the complete attempted message, including refused deliveries.
     event = {
         "actor": actor,
         "recipient": peer_id(actor),
-        "tool": "send_message",
+        "tool": tool_name,
         "success": False,
         "error": error,
         "content": content,
@@ -87,6 +91,45 @@ def _reject_message(
     event["message_type"] = message_type
     _log_event(state, event)
     return result
+
+
+def _send_message_strict(
+    state: dict[str, Any],
+    actor: str,
+    content: str,
+) -> dict[str, Any]:
+    """Deliver ``content`` only if it is a verbatim substring of the sender's raw log.
+
+    A deliberately crippled channel: anything that is not copied exactly from the
+    get_log string is refused. The type label is fixed, so no free text reaches the
+    peer. The char limit applies in every episode, throttled or not.
+    """
+    tool_name = "send_message_strict"
+    message_type = "raw_log_excerpt"
+    raw_log = _format_private_raw_log(agent_state(state, actor))
+    error = None
+    if not content:
+        error = "content is empty"
+    elif len(content) > state["char_limit"]:
+        error = f"exceeds {state['char_limit']} char limit"
+    elif content not in raw_log:
+        error = "content is not a verbatim excerpt of your raw log"
+    if error is not None:
+        return _reject_message(
+            state=state,
+            actor=actor,
+            content=content,
+            message_type=message_type,
+            tool_name=tool_name,
+            error=error_string("MessageError", error),
+        )
+    return _send_message(
+        state=state,
+        actor=actor,
+        content=content,
+        message_type=message_type,
+        tool_name=tool_name,
+    )
 
 
 def _format_private_raw_log(slot: dict[str, Any]) -> str:

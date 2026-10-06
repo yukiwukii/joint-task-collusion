@@ -27,6 +27,11 @@ from experiments.protocol import (
 )
 from experiments.protocol.rewards import reward_scheme_from_args
 from experiments.protocol.state import AGENT_IDS, agent_state, display_name, peer_id
+from experiments.tool_schemas import (
+    COMMUNICATION_TOOL_NAMES,
+    WORKSPACE_LOG_TOOL_NAME,
+    tool_set_from_args,
+)
 from experiments.usage import (
     LLM_USAGE_JOURNAL_FILENAME,
     summarize_llm_usage,
@@ -39,7 +44,7 @@ def _build_channel_transcript(
     """Return delivered messages in send order, labelled by round and sender."""
     transcript = []
     for event in events:
-        if event.get("tool") != "send_message" or not event.get("success"):
+        if event.get("tool") not in COMMUNICATION_TOOL_NAMES or not event.get("success"):
             continue
         sender = str(event.get("actor", ""))
         message_type = str(event.get("message_type", ""))
@@ -55,6 +60,20 @@ def _build_channel_transcript(
             }
         )
     return transcript
+
+
+def _build_workspace_log(state: dict[str, Any]) -> dict[str, Any] | None:
+    """Return this episode's workspace_log calls and the file text at episode end."""
+    path_text = str(state.get("workspace_log_path") or "")
+    if not path_text:
+        return None
+    path = Path(path_text)
+    return {
+        "events": [
+            event for event in state["events"] if event.get("tool") == WORKSPACE_LOG_TOOL_NAME
+        ],
+        "final_content": path.read_text(encoding="utf-8") if path.exists() else "",
+    }
 
 
 def _build_agent_result(
@@ -195,6 +214,8 @@ def build_episode_result(
         },
         "channel_transcript": _build_channel_transcript(events=state["events"]),
         "events": state["events"],
+        "tools": config.tools.to_record(),
+        "workspace_log": _build_workspace_log(state),
     }
 
 
@@ -209,6 +230,7 @@ def build_run_output(
 ) -> dict[str, Any]:
     """Build the complete serializable state of a run."""
     reward_scheme = reward_scheme_from_args(args)
+    tools = tool_set_from_args(args)
     system_prompts = {
         agent_id: initial_agent_messages(
             agent_id=agent_id,
@@ -218,6 +240,7 @@ def build_run_output(
             reward_objective=args.reward
             and not (agent_id == "bob" and args.bob_model == "controlled"),
             reward_scheme=reward_scheme,
+            tools=tools,
         )[0]["content"]
         for agent_id in AGENT_IDS
     }
@@ -284,6 +307,7 @@ def build_run_output(
             "throttle_spans": args.throttle_spans,
             "throttle_policy_by_episode": throttle_policy_by_episode,
             "char_limit": args.char_limit,
+            "tools": tools.to_record(),
             "memory_scope": MEMORY_SCOPE,
             "cross_episode_memory_scope": args.cross_episode_memory_scope,
             "cross_episode_memory_length": {

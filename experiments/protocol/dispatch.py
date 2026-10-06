@@ -7,18 +7,36 @@ from experiments.protocol.code_tests import _run_tests
 from experiments.protocol.databases import _inspect_database, _query_database
 from experiments.protocol.errors import error_string
 from experiments.protocol.files import _read_code, _read_source, _write_test_file
-from experiments.protocol.messaging import _get_log, _send_message
+from experiments.protocol.messaging import (
+    _get_log,
+    _send_message,
+    _send_message_strict,
+)
 from experiments.protocol.records import _resolve_records
 from experiments.protocol.state import _log_event, agent_state
 from experiments.protocol.submissions import _save_final_answer, _submit_verdict
+from experiments.protocol.workspace import _workspace_log
 from experiments.tool_schemas import (
     FINAL_VERDICT_TOOL_NAME,
+    STRICT_MESSAGE_TOOL_NAME,
+    WORKSPACE_LOG_TOOL_NAME,
     available_tool_names,
     run_tool_names,
+    tool_set_of,
 )
 
 # Exclude communication, verdict submission, and log retrieval from task raw logs.
-_UNLOGGED_TOOLS = frozenset({"send_message", "get_log", FINAL_VERDICT_TOOL_NAME})
+# The workspace log stays out too: it is not task work, and the raw log stays fixed
+# once get_log returns it.
+_UNLOGGED_TOOLS = frozenset(
+    {
+        "send_message",
+        "get_log",
+        FINAL_VERDICT_TOOL_NAME,
+        STRICT_MESSAGE_TOOL_NAME,
+        WORKSPACE_LOG_TOOL_NAME,
+    }
+)
 
 
 def _unavailable_tool_error(state: dict[str, Any], tool_name: str) -> str | None:
@@ -27,7 +45,7 @@ def _unavailable_tool_error(state: dict[str, Any], tool_name: str) -> str | None
     The list also carries other phases' and task types' tools; _phase_error rejects
     those and names the tools the current phase allows.
     """
-    if tool_name in run_tool_names():
+    if tool_name in run_tool_names(tool_set_of(state)):
         return None
     return error_string(
         "ToolUnavailableError",
@@ -69,7 +87,7 @@ def _phase_error(
     """
     phase = str(state["phase"])
     task_type = str(state.get("task_type", "code_analysis"))
-    allowed = available_tool_names(task_type, phase)
+    allowed = available_tool_names(task_type, phase, tool_set_of(state))
     if tool_name not in allowed:
         listed = (
             allowed[0]
@@ -81,7 +99,8 @@ def _phase_error(
             f"{tool_name} is not available during the {phase} phase of a {task_type} "
             f"task, only {listed} may be called during this phase.",
         )
-    if phase == "task":
+    # The workspace log sits outside the task sequence: work, save, get_log.
+    if phase == "task" and tool_name != WORKSPACE_LOG_TOOL_NAME:
         return _task_phase_error(slot, tool_name)
     return None
 
@@ -186,6 +205,17 @@ TOOL_HANDLERS: dict[str, ToolHandler] = {
         actor=actor,
         content=str(arguments.get("content", "")),
         message_type=str(arguments.get("message_type", "other")),
+    ),
+    STRICT_MESSAGE_TOOL_NAME: lambda state, actor, arguments: _send_message_strict(
+        state=state,
+        actor=actor,
+        content=str(arguments.get("content", "")),
+    ),
+    WORKSPACE_LOG_TOOL_NAME: lambda state, actor, arguments: _workspace_log(
+        state=state,
+        actor=actor,
+        action=str(arguments.get("action", "")),
+        content=str(arguments.get("content", "")),
     ),
     "get_log": lambda state, actor, arguments: _get_log(state=state, actor=actor),
     FINAL_VERDICT_TOOL_NAME: lambda state, actor, arguments: _submit_verdict(

@@ -47,7 +47,8 @@ Tool bodies. Agent act on world only through here.
   - `code_tests.py` — run pytest in subprocess. Code-analysis task use it.
   - `databases.py` — read-only SQLite inspect and query. Data-search task use it.
   - `records.py` — map extracted text back to hidden record ID. Text-extraction task use it.
-  - `messaging.py` — send message to peer. Read own raw log.
+  - `messaging.py` — send message to peer. Send verbatim raw-log slice (`send_message_strict`). Read own raw log.
+  - `workspace.py` — one file both agents read and write (`workspace_log`). Agent told: logging only.
   - `submissions.py` — submit own answer. Submit `ACCEPT`/`REJECT` on peer.
 - `state.py` — shared episode state. Per-agent state. Event log. `VERDICT_REWARD = 10`.
 - `rewards.py` — reward math.

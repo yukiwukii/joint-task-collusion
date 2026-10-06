@@ -25,10 +25,12 @@ from experiments.runner import (
     add_model_arguments,
     add_reward_scheme_arguments,
     add_feedback_arguments,
+    add_tool_arguments,
     replays_controlled_bob,
     validate_run_args,
 )
 from experiments.tasks import read_task_pairs
+from experiments.tool_schemas import tool_set_from_args
 
 DEFAULT_VERDICT_POLICY = "raw-only"
 MANIFEST_FILENAME_PATTERN = re.compile(r"rep(\d+)_sampled_manifest\.json")
@@ -247,7 +249,7 @@ def _validate_contiguous_indexes(indexes: list[int], source: str) -> None:
 
 
 # Sections this command reads; the judges read the same file.
-RUN_SECTIONS = {"alice": "alice_", "bob": "bob_", "run": ""}
+RUN_SECTIONS = {"alice": "alice_", "bob": "bob_", "run": "", "tools": "tool_"}
 
 
 @dataclass(frozen=True)
@@ -320,6 +322,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     add_memory_arguments(parser, default_scope="full-history")
     add_reward_scheme_arguments(parser)
+    add_tool_arguments(parser)
 
     output_group = parser.add_argument_group("output")
     output_group.add_argument(
@@ -401,6 +404,10 @@ def _run_label(args: argparse.Namespace) -> str:
         ("reflection", args.reflection),
     )
     suffixes.extend(name for name, enabled in optional_suffixes if enabled)
+    # Name non-default tool switches so those runs never share a label with default ones.
+    tools = tool_set_from_args(args)
+    if not tools.is_default:
+        suffixes.append(tools.label)
     return "_".join([label, *suffixes])
 
 
@@ -472,6 +479,12 @@ def _build_runner_command(
     for name in ("reflection", "reward", "verdict-review"):
         enabled = getattr(args, name.replace("-", "_"))
         command.append(f"--{name}" if enabled else f"--no-{name}")
+    # Forward the effective switches, so send_message_strict shows send_message off.
+    enabled_tools = tool_set_from_args(args).enabled
+    for name in ("tool-send-message", "tool-send-message-strict", "tool-workspace-log"):
+        enabled = name.removeprefix("tool-").replace("-", "_") in enabled_tools
+        command.append(f"--{name}" if enabled else f"--no-{name}")
+    command.extend(["--tool-workspace-log-phases", *args.tool_workspace_log_phases])
     outcome_flags = (
         ("--quiet", args.quiet),
         # Reuse the launcher route check for all children with the same models.

@@ -40,7 +40,7 @@ from experiments.protocol.dispatch import (
     reject_undecodable_arguments,
 )
 from experiments.protocol.state import peer_id
-from experiments.tool_schemas import get_run_tool_schemas
+from experiments.tool_schemas import get_run_tool_schemas, tool_set_of
 from experiments.usage import _get_attr, _jsonable, normalize_llm_usage
 
 LLM_MAX_RETRIES = 20
@@ -743,7 +743,7 @@ def run_agent_turn(
 ) -> dict[str, Any]:
     # The same list goes out in every phase so the prompt cache survives phase changes.
     # The dispatcher rejects tools outside the current phase and task type.
-    tools = get_run_tool_schemas(peer=peer_id(actor))
+    tools = get_run_tool_schemas(peer=peer_id(actor), tools=tool_set_of(state))
     extra = get_litellm_completion_kwargs(
         model,
         reasoning_effort,
@@ -814,7 +814,7 @@ def run_reflection_turn(
     No tool choice is forced, and any returned tool calls are discarded.
     """
     # Same list as the agent's phase turns, so the reflection reuses their cached prefix.
-    tools = get_run_tool_schemas(peer=peer_id(actor))
+    tools = get_run_tool_schemas(peer=peer_id(actor), tools=tool_set_of(state))
     extra = get_litellm_completion_kwargs(model, reasoning_effort)
     response, choice_message, content, _ = _complete_with_retries(
         model=model,
