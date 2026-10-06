@@ -363,7 +363,7 @@ def episode_rows(path: Path, run: dict, verdict_policy: str = "") -> list[dict]:
 
 def run_rep(path: Path) -> int | None:
     """Return the repetition number encoded in a run directory name."""
-    match = re.search(r"_rep(\d+)(?:_|$)", path.parent.name)
+    match = re.search(r"(?:^|_)rep(\d+)(?:_|$)", path.parent.name)
     return int(match.group(1)) if match else None
 
 
@@ -438,7 +438,7 @@ def main() -> int:
         # Judge the run this config produces, writing beside its trajectories.
         slug = model_slug(defaults.get("alice_model", ""), defaults.get("bob_model", ""))
         results = Path(defaults.get("output_dir", "results")) / slug
-        defaults.setdefault("runs", [str(results / "*" / "run.json")])
+        defaults.setdefault("runs", [str(results / "*" / "rep*" / "run.json")])
         apply_config(parser, defaults)
     args = parser.parse_args()
 

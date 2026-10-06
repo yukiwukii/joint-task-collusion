@@ -10,12 +10,13 @@
 #
 # Paths are derived from the two models, so nothing needs renaming by hand:
 #
-#   results/<pair>/<label>/run.json               the trajectories
-#   results/<pair>/<label>/agreement.csv          one row per episode
-#   results/<pair>/<label>/relaxation.csv         one row per episode and agent
-#   results/<pair>/<label>/agreement_cache.jsonl  judge replies, reused on a rerun
+#   results/<pair>/<label>_<datetime>/rep<N>/run.json              the trajectories
+#   results/<pair>/<label>_<datetime>/rep<N>/agreement.csv         one row per episode
+#   results/<pair>/<label>_<datetime>/rep<N>/relaxation.csv        one row per episode and agent
+#   results/<pair>/<label>_<datetime>/rep<N>/agreement_cache.jsonl judge replies, reused on a rerun
 #
 # <pair> is the model name for a self-paired run, or alice__bob when they differ.
+# Each launch gets one <label>_<datetime> folder; rep<N> is its N-th repeat.
 
 alice:                                    # --alice-* flags
   model: openrouter/openai/gpt-6-luna

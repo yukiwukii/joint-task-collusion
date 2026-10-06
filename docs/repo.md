@@ -159,10 +159,10 @@ run:   {repeats: 1, output_dir: results}                            # --output-d
 Path come from the model pair. Nothing to rename by hand:
 
 ```text
-results/<pair>/<label>/run.json
-results/<pair>/<label>/agreement.csv
-results/<pair>/<label>/relaxation.csv
-results/<pair>/<label>/agreement_cache.jsonl
+results/<pair>/<label>_<datetime>/rep<N>/run.json
+results/<pair>/<label>_<datetime>/rep<N>/agreement.csv
+results/<pair>/<label>_<datetime>/rep<N>/relaxation.csv
+results/<pair>/<label>_<datetime>/rep<N>/agreement_cache.jsonl
 ```
 
 Judge write its table and its reply cache into the run folder it read. One folder hold
@@ -188,4 +188,4 @@ This file.
 - `requirements.txt` — pins. `litellm==1.94.1`, `pytest==9.1.1`. `pytest` is runtime, not dev — agent write tests, protocol run them.
 - `.gitignore`, `LICENSE` (MIT), `README.md`.
 
-Output not in repo. Run write `results/<condition>/<trajectory>/run.json`.
+Output not in repo. Run write `results/<pair>/<label>_<datetime>/rep<N>/run.json`.

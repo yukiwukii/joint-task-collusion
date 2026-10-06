@@ -139,11 +139,11 @@ Judge find run from same config. Judge cache reply. Rerun skip done row.
 ### Step 4. Read output
 
 ```text
-results/<pair>/<run>/run.json                  trajectory
-results/<pair>/<run>/agreement.csv             one row per episode
-results/<pair>/<run>/relaxation.csv            one row per episode per agent
-results/<pair>/<run>/agreement_cache.jsonl     agreement judge reply
-results/<pair>/<run>/relaxation_cache.jsonl    relaxation judge reply
+results/<pair>/<run>/rep<N>/run.json                trajectory
+results/<pair>/<run>/rep<N>/agreement.csv           one row per episode
+results/<pair>/<run>/rep<N>/relaxation.csv          one row per episode per agent
+results/<pair>/<run>/rep<N>/agreement_cache.jsonl   agreement judge reply
+results/<pair>/<run>/rep<N>/relaxation_cache.jsonl  relaxation judge reply
 ```
 
 ## Run results viewer
@@ -157,7 +157,8 @@ Server start on `http://127.0.0.1:8765/`. Browser open. Port taken → next free
 Viewer show:
 
 - One tab per model pair folder.
-- One sub-tab per run.
+- One sub-tab per run (one launch of `python -m experiments`).
+- Per run, one tab per rep.
 - `run.json`: overview, episode transcript, agents, events, raw tree.
 - `agreement.csv`, `relaxation.csv`: one row at a time, with judge reasoning, raw reply, parsed field.
 

@@ -39,28 +39,44 @@ DEFAULT_RESULTS = ROOT / "results"
 CSV_FILES = ("agreement.csv", "relaxation.csv")
 CACHE_FILES = {"agreement.csv": ("agreement", "agreement_cache.jsonl"),
                "relaxation.csv": ("relaxation", "relaxation_cache.jsonl")}
-# ``<label>_<YYYYMMDD>_<HHMMSS>_<microseconds>_<shorthash>``
-RUN_STAMP_RE = re.compile(r"^(?P<label>.*)_(?P<date>\d{8})_(?P<time>\d{6})_(?P<micro>\d+)_(?P<hash>[0-9a-f]+)$")
+# ``<label>_<YYYYMMDD>_<HHMMSS>[_<microseconds>_<shorthash>]``
+RUN_STAMP_RE = re.compile(
+    r"^(?P<label>.*)_(?P<date>\d{8})_(?P<time>\d{6})(?:_(?P<micro>\d+)_(?P<hash>[0-9a-f]+))?$"
+)
 
 
 def is_run_dir(path: Path) -> bool:
     return path.is_dir() and (path / "run.json").is_file()
 
 
-def describe_run(run_dir: Path) -> dict:
-    """Derive display labels for a run from its directory name alone (cheap)."""
-    name = run_dir.name
-    match = RUN_STAMP_RE.match(name)
-    label, stamp, short_hash = name, "", ""
+def find_runs(model_dir: Path) -> list[Path]:
+    """Runs sit at ``<launch>/rep<N>``; older ones sit directly in the model directory."""
+    runs = []
+    for child in sorted(p for p in model_dir.iterdir() if p.is_dir()):
+        if is_run_dir(child):
+            runs.append(child)
+        else:
+            runs.extend(d for d in sorted(child.iterdir()) if is_run_dir(d))
+    return runs
+
+
+def describe_run(run_dir: Path, model_dir: Path) -> dict:
+    """Derive display labels for a run from its directory path alone (cheap)."""
+    name = run_dir.relative_to(model_dir).as_posix()
+    launch, _, rep = name.rpartition("/")
+    if not launch:
+        launch, rep = rep, ""
+    match = RUN_STAMP_RE.match(launch)
+    label, stamp, short_hash = launch, "", ""
     if match:
         label = match.group("label")
         date, time = match.group("date"), match.group("time")
         stamp = f"{date[4:6]}-{date[6:8]} {time[0:2]}:{time[2:4]}:{time[4:6]}"
-        short_hash = match.group("hash")[:6]
+        short_hash = (match.group("hash") or "")[:6]
     if label.startswith("run_"):
         label = label[len("run_"):]
     rounds = next((part for part in label.split("_") if re.fullmatch(r"r\d+", part)), "")
-    rep = next((part for part in label.split("_") if re.fullmatch(r"rep\d+", part)), "")
+    rep = rep or next((part for part in label.split("_") if re.fullmatch(r"rep\d+", part)), "")
     chips = [chip for chip in (rounds, rep, stamp) if chip]
     files = {}
     cache_names = tuple(cache for _, cache in CACHE_FILES.values())
@@ -68,8 +84,10 @@ def describe_run(run_dir: Path) -> dict:
         target = run_dir / filename
         files[filename] = target.stat().st_size if target.is_file() else None
     return {
-        "dir": run_dir.name,
+        "dir": name,
         "name": name,
+        "launch": launch,
+        "rep": name.rpartition("/")[2] if "/" in name else "",
         "label": label,
         "stamp": stamp,
         "hash": short_hash,
@@ -79,16 +97,31 @@ def describe_run(run_dir: Path) -> dict:
     }
 
 
+def group_launches(runs: list[dict]) -> list[dict]:
+    """One entry per launch, newest first, holding its reps in rep order."""
+    launches: dict = {}
+    for run in runs:
+        entry = launches.setdefault(run["launch"], {
+            "dir": run["launch"], "label": run["label"], "stamp": run["stamp"],
+            "hash": run["hash"], "mtime": run["mtime"], "runs": []})
+        entry["mtime"] = max(entry["mtime"], run["mtime"])
+        entry["runs"].append(run["dir"])
+    for entry in launches.values():
+        entry["runs"].sort(key=lambda d: rep_order(d.rpartition("/")[2]))
+        entry["short"] = " · ".join(chip for chip in (entry["stamp"], entry["hash"]) if chip) or entry["dir"]
+    return sorted(launches.values(), key=lambda entry: entry["mtime"], reverse=True)
+
+
 def build_tree(results_root: Path) -> dict:
     """List model directories and the runs inside them, newest run first."""
     models = []
     if results_root.is_dir():
         for model_dir in sorted(p for p in results_root.iterdir() if p.is_dir()):
-            runs = [describe_run(d) for d in sorted(model_dir.iterdir()) if is_run_dir(d)]
+            runs = [describe_run(d, model_dir) for d in find_runs(model_dir)]
             if not runs:
                 continue
             runs.sort(key=lambda run: run["mtime"], reverse=True)
-            models.append({"name": model_dir.name, "runs": runs})
+            models.append({"name": model_dir.name, "runs": runs, "launches": group_launches(runs)})
     models.sort(key=lambda model: model["name"])
     return {"results_root": str(results_root), "models": models}
 
@@ -252,6 +285,11 @@ UNJUDGED = {"judged": False, "value": None, "parse_ok": None, "quote_ok": None,
 
 def rate(count: int, total: int):
     return count / total if total else None
+
+
+def rep_order(name: str) -> tuple:
+    match = re.fullmatch(r"rep(\d+)", name)
+    return (int(match.group(1)) if match else 1 << 30, name)
 
 
 def compute_metrics(run: dict, tables: dict) -> dict:
@@ -659,6 +697,7 @@ PAGE = r"""<!doctype html>
   <button id="reload">Reload</button>
 </header>
 <nav class="tabs models" id="modelTabs"></nav>
+<nav class="tabs runs" id="launchTabs"></nav>
 <nav class="tabs runs" id="runTabs"></nav>
 <section id="runHead"></section>
 <nav class="tabs sections" id="sectionTabs"></nav>
@@ -672,7 +711,7 @@ const SECTIONS = [
   ["relaxation.csv", "relaxation.csv"],
   ["raw", "run.json"],
 ];
-const state = { tree: null, model: null, run: null, section: "overview", data: null, csvView: {} };
+const state = { tree: null, model: null, launch: null, run: null, section: "overview", data: null, csvView: {} };
 const cache = new Map();
 
 const $ = (sel) => document.querySelector(sel);
@@ -796,24 +835,43 @@ function renderModelTabs() {
     bar.append(el("button", {
       class: "tab", role: "tab", "aria-selected": String(model.name === state.model),
       onclick: () => selectModel(model.name),
-    }, model.name, el("small", { text: model.runs.length + (model.runs.length === 1 ? " run" : " runs") })));
+    }, model.name, el("small", { text: model.launches.length + (model.launches.length === 1 ? " run" : " runs") })));
   }
   if (!state.tree.models.length) bar.append(el("span", { class: "note", text: "No runs found under " + state.tree.results_root }));
 }
 
 function currentModel() { return state.tree.models.find((m) => m.name === state.model); }
 function currentRun() { const m = currentModel(); return m && m.runs.find((r) => r.dir === state.run); }
+function currentLaunch() { const m = currentModel(); return m && m.launches.find((l) => l.dir === state.launch); }
+function firstRep() { const l = currentLaunch(); return l && l.runs.length ? l.runs[0] : null; }
+
+/* One tab per experiment launch; its reps sit on the row below. */
+function renderLaunchTabs() {
+  const bar = $("#launchTabs");
+  bar.textContent = "";
+  const model = currentModel();
+  if (!model) return;
+  for (const launch of model.launches) {
+    bar.append(el("button", {
+      class: "tab", role: "tab", "aria-selected": String(launch.dir === state.launch), title: launch.dir,
+      onclick: () => selectLaunch(launch.dir),
+    }, launch.stamp || launch.label, el("small", {
+      text: launch.runs.length + (launch.runs.length === 1 ? " rep" : " reps") + (launch.hash ? " · " + launch.hash : "") })));
+  }
+}
 
 function renderRunTabs() {
   const bar = $("#runTabs");
   bar.textContent = "";
   const model = currentModel();
-  if (!model) return;
-  for (const run of model.runs) {
+  const launch = currentLaunch();
+  if (!model || !launch) return;
+  for (const dir of launch.runs) {
+    const run = model.runs.find((r) => r.dir === dir);
     bar.append(el("button", {
-      class: "tab", role: "tab", "aria-selected": String(run.dir === state.run), title: run.name,
-      onclick: () => selectRun(run.dir),
-    }, run.short, run.hash ? el("small", { text: run.hash }) : null));
+      class: "tab", role: "tab", "aria-selected": String(dir === state.run), title: run.name,
+      onclick: () => selectRun(dir),
+    }, run.rep || "run"));
   }
 }
 
@@ -826,7 +884,7 @@ function renderSectionTabs() {
     const missing = id.endsWith(".csv") && !run.files[id];
     bar.append(el("button", {
       class: "tab", role: "tab", "aria-selected": String(id === state.section),
-      onclick: () => { state.section = id; renderSectionTabs(); renderView(); },
+      onclick: () => { state.section = id; renderSectionTabs(); renderView(); setHash(); },
     }, label, missing ? el("small", { text: "missing" }) : null));
   }
 }
@@ -863,8 +921,18 @@ function renderRunHead() {
 async function selectModel(name) {
   state.model = name;
   const model = currentModel();
-  state.run = model && model.runs.length ? model.runs[0].dir : null;
+  state.launch = model && model.launches.length ? model.launches[0].dir : null;
+  state.run = firstRep();
   renderModelTabs();
+  renderLaunchTabs();
+  renderRunTabs();
+  await loadCurrent();
+}
+
+async function selectLaunch(dir) {
+  state.launch = dir;
+  state.run = firstRep();
+  renderLaunchTabs();
   renderRunTabs();
   await loadCurrent();
 }
@@ -873,6 +941,10 @@ async function selectRun(dir) {
   state.run = dir;
   renderRunTabs();
   await loadCurrent();
+}
+
+function setHash() {
+  location.hash = [state.model, state.launch, state.run || "", state.section].map((p) => encodeURIComponent(p || "")).join("/");
 }
 
 async function loadCurrent() {
@@ -891,7 +963,7 @@ async function loadCurrent() {
   }
   renderRunHead();
   renderView();
-  location.hash = encodeURIComponent(state.model) + "/" + encodeURIComponent(state.run) + "/" + encodeURIComponent(state.section);
+  setHash();
 }
 
 /* ---------- sections ---------- */
@@ -1446,14 +1518,18 @@ async function boot() {
     return;
   }
   $("#rootPath").textContent = state.tree.results_root;
-  const hash = decodeURIComponent(location.hash.replace(/^#/, "")).split("/");
-  const wanted = { model: hash[0], run: hash[1], section: hash[2] };
+  const hash = location.hash.replace(/^#/, "").split("/").map(decodeURIComponent);
+  const wanted = { model: hash[0], launch: hash[1], run: hash[2], section: hash[3] };
   const models = state.tree.models;
   state.model = models.some((m) => m.name === wanted.model) ? wanted.model : (models[0] && models[0].name) || null;
   const model = currentModel();
-  state.run = model && model.runs.some((r) => r.dir === wanted.run) ? wanted.run : (model && model.runs[0] && model.runs[0].dir) || null;
+  const launches = model ? model.launches : [];
+  state.launch = launches.some((l) => l.dir === wanted.launch) ? wanted.launch : (launches[0] && launches[0].dir) || null;
+  const launch = currentLaunch();
+  state.run = launch && launch.runs.includes(wanted.run) ? wanted.run : firstRep();
   if (SECTIONS.some(([id]) => id === wanted.section)) state.section = wanted.section;
   renderModelTabs();
+  renderLaunchTabs();
   renderRunTabs();
   await loadCurrent();
 }

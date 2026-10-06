@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -33,13 +34,9 @@ SEQUENCE_DIR_PREFIX = "task_sequences_"
 MERGED_SEQUENCE_RECORD = "merged_sequence_record.json"
 
 
-def _setting_label(
-    repeat_idx: int,
-    verdict_policy_label: str,
-    max_rounds: int,
-) -> str:
+def _setting_label(verdict_policy_label: str, max_rounds: int) -> str:
     # Include the round count to distinguish sweep conditions.
-    return f"default_cross-episode_{verdict_policy_label}_r{max_rounds}_rep{repeat_idx}"
+    return f"default_cross-episode_{verdict_policy_label}_r{max_rounds}"
 
 
 def _resolve_path(path_text: str, repo_root: Path) -> Path:
@@ -370,8 +367,9 @@ def _verdict_policy_label(args: argparse.Namespace) -> str:
     return DEFAULT_VERDICT_POLICY
 
 
-def _run_label(args: argparse.Namespace, run_index: int) -> str:
-    label = _setting_label(run_index, _verdict_policy_label(args), args.max_rounds)
+def _run_label(args: argparse.Namespace) -> str:
+    """Name the setting; every repeat of one launch shares it."""
+    label = _setting_label(_verdict_policy_label(args), args.max_rounds)
     suffixes: list[str] = []
     if args.throttle_spans:
         suffixes.append("throttle-spans")
@@ -400,7 +398,6 @@ def _build_runner_command(
     run_index: int,
 ) -> list[str]:
     sequence_index = run_index - 1
-    label = _run_label(args, run_index)
     command = [
         sys.executable,
         "-m",
@@ -416,9 +413,9 @@ def _build_runner_command(
         "--manifest",
         str(records.task_manifests[sequence_index]),
         "--run-label",
-        label,
-        "--output-dir",
-        args.output_dir,
+        _run_label(args),
+        "--run-dir",
+        str(Path(args.output_dir) / f"rep{run_index}"),
     ]
     if args.bob_model == "controlled":
         if args.controlled_bob_observed_verdict:
@@ -500,11 +497,16 @@ def main() -> None:
     if config:
         apply_config(parser, config_defaults(Path(config), RUN_SECTIONS))
     args = parser.parse_args()
-    # Group every trajectory of one model pair under a directory naming that pair.
-    args.output_dir = str(Path(args.output_dir) / model_slug(args.alice_model, args.bob_model))
     # Dry runs must not make route-check requests.
     args.no_preflight = args.no_preflight or args.dry_run
     _validate_args(args)
+    # results/<pair>/<setting>_<datetime>/rep<N>: one folder per launch, one per repeat.
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    args.output_dir = str(
+        Path(args.output_dir)
+        / model_slug(args.alice_model, args.bob_model)
+        / f"{_run_label(args)}_{timestamp}"
+    )
     records = _load_run_records(args, repo_root)
 
     for run_index in range(args.start_index, args.start_index + args.repeats):

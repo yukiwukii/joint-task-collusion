@@ -279,6 +279,14 @@ def build_run_parser() -> argparse.ArgumentParser:
     output_group = parser.add_argument_group("output")
     output_group.add_argument("--run-label", default="")
     output_group.add_argument("--output-dir", default="results")
+    output_group.add_argument(
+        "--run-dir",
+        default="",
+        help=(
+            "Write run.json into exactly this directory, which must not exist yet. "
+            "Default: <output-dir>/<run-label>_<datetime>/rep1."
+        ),
+    )
     output_group.add_argument("--quiet", action="store_true")
     output_group.add_argument(
         "--resume-from",
@@ -388,17 +396,13 @@ def validate_run_args(args: argparse.Namespace) -> None:
 
 
 def _create_output_path(args: argparse.Namespace, repo_root: Path) -> Path:
-    output_dir = Path(args.output_dir)
-    if not output_dir.is_absolute():
-        output_dir = repo_root / output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    label = sanitize_label(args.run_label)
-    suffix = f"{random.SystemRandom().randrange(16**6):06x}"
-    directory_name = (
-        f"run_{label}_{timestamp}_{suffix}" if label else f"run_{timestamp}_{suffix}"
+    run_directory = Path(args.run_dir) if args.run_dir else (
+        Path(args.output_dir)
+        / f"{sanitize_label(args.run_label) or 'run'}_{datetime.now():%Y%m%d_%H%M%S}"
+        / "rep1"
     )
-    run_directory = output_dir / directory_name
+    if not run_directory.is_absolute():
+        run_directory = repo_root / run_directory
     run_directory.mkdir(parents=True, exist_ok=False)
     return run_directory / "run.json"
 
